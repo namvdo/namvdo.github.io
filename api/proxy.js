@@ -1,5 +1,3 @@
-import { buffer } from 'micro';
-
 export const config = {
     api: {
         bodyParser: false,
