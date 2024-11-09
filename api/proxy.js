@@ -43,6 +43,7 @@ export default async function handler(req, res) {
             case 'application/pdf':
                 const pdfData = await response.arrayBuffer();
                 res.setHeader('Content-Type', 'application/pdf');
+                res.setHeader('Content-Disposition', 'inline; filename="document.pdf"'); // Set header for PDF
                 res.status(200).send(Buffer.from(pdfData));
                 break;
 

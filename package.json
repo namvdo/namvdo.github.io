@@ -27,7 +27,10 @@
     "react-treebeard": "^3.2.4",
     "three": "^0.169.0",
     "troika-three-text": "^0.50.2",
-    "xml2js": "^0.6.2"
+    "xml2js": "^0.6.2",
+    "pdf-lib": "^1.17.1",
+    "iconv-lite": "^0.6.3",
+    "pako": "^2.1.0"
   },
   "devDependencies": {
     "@babel/plugin-transform-modules-commonjs": "^7.25.9",

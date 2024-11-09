@@ -1,5 +1,5 @@
 import React, {useState, useEffect} from 'react';
-import {LANGUAGE_NAMES} from '../functions/udhr.js';
+import {getTranslationResponse, LANGUAGE_NAMES} from '../functions/udhr.js';
 import {ChevronRight, X} from 'lucide-react';
 
 export const LanguageTree = () => {
@@ -22,7 +22,9 @@ export const LanguageTree = () => {
     };
 
 
-    const onPerformSearch = () => {
+    const onPerformSearch = async () => {
+        const response = await getTranslationResponse(selectedLanguages[0]);
+        console.log('response now: ' + response);
     }
 
     return (
@@ -32,7 +34,6 @@ export const LanguageTree = () => {
                 <div style={{
                     width: '50%',
                     height: '500px',
-                    overflowY: 'auto',
                     border: '1px solid #ccc',
                     padding: '24px',
                     boxSizing: 'border-box',
@@ -68,7 +69,7 @@ export const LanguageTree = () => {
                         display: 'flex',
                         flexDirection: 'column',
                         gap: '10px',
-                        maxHeight: '500px',
+                        maxHeight: '350px',
                         overflowY: 'auto',
                         padding: '4px'
                     }}>
@@ -143,11 +144,13 @@ export const LanguageTree = () => {
                 </div>
             </div>
             <div style={{
+                width: '60vw',
                 display: 'flex',
                 alignItems: 'center',
-                justifyContent: 'flex-end', // Aligns the button to the right
+                justifyContent: 'flex-end',
                 marginBottom: '24px',
                 marginTop: '24px',
+                gap: '24px',
             }}>
                 <button
                     onClick={onPerformSearch}
@@ -161,7 +164,7 @@ export const LanguageTree = () => {
                         transition: 'background-color 0.2s'
                     }}
                 >
-                    Search
+                    Show Tree
                 </button>
             </div>
         </div>

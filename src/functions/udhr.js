@@ -1,3 +1,7 @@
+import {PDFName, PDFDocument} from "pdf-lib";
+import * as iconv from "iconv-lite";
+import {cleanup} from "@testing-library/react";
+
 const LANGUAGE_URLS = {
     // Major UN Languages
     'ara': 'https://www.ohchr.org/sites/default/files/UDHR/Documents/UDHR_Translations/arz.pdf', // Arabic
@@ -77,7 +81,6 @@ const LANGUAGE_URLS = {
     'fil': 'https://www.ohchr.org/sites/default/files/UDHR/Documents/UDHR_Translations/tgl.pdf', // Filipino
 };
 
-// Language names mapping for display
 const LANGUAGE_NAMES = {
     'ara': 'Arabic',
     'eng': 'English',
@@ -143,5 +146,106 @@ const LANGUAGE_NAMES = {
     'msa': 'Malay',
     'fil': 'Filipino'
 };
+
+
+const LANGUAGE_ENCODINGS = {
+    'ar': 'utf-8', // arabic
+    'zh': 'gb18030', // chinese
+    'ja': 'shift-jis', // japanese
+    'ko': 'euc-kr', // korean
+    'ru': 'windows-1251', // russian
+    'default': 'utf-8'
+}
+
+const PROXY_URL = "https://namvdogithubio.vercel.app/api/proxy";
+
+const cleanText = (text, language) => {
+    switch (language) {
+        case 'ar':
+            // Handle right-to-left text and Arabic-specific characters
+            return text.replace(/[\u0600-\u06FF\u0750-\u077F]/g, char => char)
+                .replace(/\s+/g, ' ')
+                .trim();
+        case 'zh':
+        case 'ja':
+        case 'ko':
+            // Handle CJK characters, remove spaces between ideographs
+            return text.replace(/[\u4E00-\u9FFF\u3040-\u309F\u30A0-\u30FF\uAC00-\uD7AF]/g, char => char)
+                .replace(/\s+/g, ' ')
+                .trim();
+        default:
+            // Default cleaning for Latin-based scripts
+            return text.replace(/[^\S\r\n]+/g, ' ')
+                .replace(/[\r\n]+/g, '\n')
+                .trim();
+    }
+}
+
+
+export const getTranslationResponse = async (language) => {
+    try {
+        if (!LANGUAGE_URLS[language]) {
+            throw new Error(`No URL found for ${language}`);
+        }
+        const uri = PROXY_URL + "?url=" + LANGUAGE_URLS[language] + "&contentType=application/pdf";
+        const response = await fetch(uri);
+        if (!response.ok) {
+            throw new Error(`HTTP error: ${response.status}`);
+        }
+        const pdfData = await response.arrayBuffer();
+        console.log("response pdf now: " + pdfData);
+        const pdfDoc = await PDFDocument.load(pdfData, {
+            ignoreEncryption: true,
+            updateMetadata: false,
+        });
+
+        const encoding = detectEncoding(pdfDoc) || LANGUAGE_ENCODINGS[language] || LANGUAGE_ENCODINGS.default;
+        const pages = pdfDoc.getPages();
+        let extractedText = '';
+        for (const page of pages) {
+            const textContent = await page.getTextContent();
+            let pageText = '';
+            if (typeof textContent === 'string') {
+                pageText = textContent;
+            } else if (Array.isArray(textContent?.items)) {
+                pageText = textContent.items
+                    .map(item => item.str || '')
+                    .join(' ');
+            }
+
+            try {
+                const decodedText = iconv.decode(Buffer.from(pageText, 'binary'), encoding);
+                extractedText  += decodedText + "\n";
+            } catch (decodeError) {
+                console.warn(`Decoding error for ${language}, falling back to UTF-8:`, decodeError);
+                extractedText += pageText + '\n';
+            }
+        }
+
+        const cleanText = cleanText(extractedText, language);
+        return cleanText;
+    } catch (error) {
+        console.error(`Error processing PDF for language ${language}:`, error);
+        throw error;
+    }
+}
+
+
+const detectEncoding = (pdfDoc) => {
+    try {
+        const metadata = pdfDoc.getMetadata();
+        if (metadata?.encoding) {
+            return metadata.encoding;
+        }
+
+        const catalog = pdfDoc.catalog;
+        if (catalog?.get('Lang')) {
+            const lang = catalog.get('Lang').toString();
+            return LANGUAGE_ENCODINGS[lang];
+        }
+    } catch {
+        return null;
+    }
+}
 
 export { LANGUAGE_URLS, LANGUAGE_NAMES };
