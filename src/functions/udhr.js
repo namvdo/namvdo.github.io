@@ -1,9 +1,8 @@
-import * as iconv from "iconv-lite";
 import * as pdfjsLib from 'pdfjs-dist';
 
 import * as pdfjs from "pdfjs-dist";
 
-pdfjs.GlobalWorkerOptions.workerSrc = '../node_modules/pdfjs-dist/build/pdf.worker.mjs';
+pdfjs.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.8.69/pdf.worker.mjs';
 
 
 const LANGUAGE_URLS = {
