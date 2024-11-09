@@ -1,4 +1,4 @@
-import {useEffect, useRef, useState} from "react";
+import React, {useEffect, useRef, useState} from "react";
 import {workerCode} from "../workers/ncdWorker.js";
 import {
     getFastaAccessionNumbersFromIds, getFastaList, getFastaListAndParse,
@@ -19,6 +19,8 @@ import {getGenbankSequences} from "../functions/getPublicGenbank.js";
 import {LanguageTree} from "./LanguageTree.jsx";
 import {MatrixTree} from "./MatrixTree.jsx";
 import {FastaSearch} from "./FastaSearch.jsx";
+import {ChevronRight, X, Info, Loader} from 'lucide-react';
+
 
 export const QSearch = () => {
     const MAX_IDS_FETCH = 40;
@@ -34,6 +36,8 @@ export const QSearch = () => {
     const [labelMap, setLabelMap] = useState(new Map());
     const labelMapRef = useRef(labelMap);
     const [activeTab, setActiveTab] = useState('fastaSearch');
+    const [isLoading, setIsLoading] = useState(false);
+    const [isSearchDisabled, setIsSearchDisabled] = useState(true);
 
 
     useEffect(() => {
@@ -128,6 +132,8 @@ export const QSearch = () => {
         if (emptySearchTerms(searchTerms)) {
             return;
         }
+        setIsLoading(true);
+        setIsSearchDisabled(true);
         searchTerms = searchTerms.map(term => term.toLowerCase().trim());
         const accessionToSearchTerm = new Map();
         const results = [];
@@ -149,117 +155,122 @@ export const QSearch = () => {
             setHasMatrix(false);
             setQSearchTreeResult([]);
         } else {
-            const hitAccessions = new Set();
-            const missAccessions = new Set();
-            const accessionToSequence = new Map();
-            const accessions = [];
-            for (let i = 0; i < results.length; i++) {
-                if (results[i].cacheHit) {
-                    for (let j = 0; j < results[i].accessions.length; j++) {
-                        const rs = results[i];
-                        const accession = rs.accessions[j];
-                        if (!rs.contents[j] || rs.contents[j].trim() === '') {
-                            missAccessions.add(rs.accessions[j]);
-                        } else {
-                            hitAccessions.add(rs.accessions[j]);
-                            accessionToSequence.set(rs.accessions[j], {
-                                content: rs.contents[j],
-                                label: rs.labels[j],
-                                commonName: rs.commonNames[j],
-                                scientificName: rs.scientificNames[j],
-                                accession: rs.accessions[j]
-                            })
+            try {
+                const hitAccessions = new Set();
+                const missAccessions = new Set();
+                const accessionToSequence = new Map();
+                const accessions = [];
+                for (let i = 0; i < results.length; i++) {
+                    if (results[i].cacheHit) {
+                        for (let j = 0; j < results[i].accessions.length; j++) {
+                            const rs = results[i];
+                            const accession = rs.accessions[j];
+                            if (!rs.contents[j] || rs.contents[j].trim() === '') {
+                                missAccessions.add(rs.accessions[j]);
+                            } else {
+                                hitAccessions.add(rs.accessions[j]);
+                                accessionToSequence.set(rs.accessions[j], {
+                                    content: rs.contents[j],
+                                    label: rs.labels[j],
+                                    commonName: rs.commonNames[j],
+                                    scientificName: rs.scientificNames[j],
+                                    accession: rs.accessions[j]
+                                })
+                            }
+                            accessions.push(accession);
                         }
-                        accessions.push(accession);
-                    }
-                } else {
-                    for (let j = 0; j < results[i].accessions.length; j++) {
-                        missAccessions.add(results[i].accessions[j]);
-                        accessions.push(results[i].accessions[j]);
+                    } else {
+                        for (let j = 0; j < results[i].accessions.length; j++) {
+                            missAccessions.add(results[i].accessions[j]);
+                            accessions.push(results[i].accessions[j]);
+                        }
                     }
                 }
-            }
-            if (missAccessions.size !== 0) {
-                const missedSequences = await getFastaSequence(Array.from(missAccessions), apiKey);
-                const accessionSeqToCache = {
+                if (missAccessions.size !== 0) {
+                    const missedSequences = await getFastaSequence(Array.from(missAccessions), apiKey);
+                    const accessionSeqToCache = {
+                        accessions: [],
+                        contents: []
+                    }
+                    for (let i = 0; i < missedSequences.accessions.length; i++) {
+                        accessionToSequence.set(missedSequences.accessions[i], {
+                            content: missedSequences.contents[i],
+                            label: missedSequences.labels[i],
+                            commonName: missedSequences.commonNames[i],
+                            scientificName: missedSequences.scientificNames[i],
+                            accession: missedSequences.accessions[i]
+                        });
+                        const searchTerm = accessionToSearchTerm.get(missedSequences.accessions[i]);
+                        cacheSearchTermAccessions(searchTerm, {
+                            accessions: [missedSequences.accessions[i]],
+                            labels: [missedSequences.labels[i]],
+                            commonNames: [missedSequences.commonNames[i]],
+                            scientificNames: [missedSequences.scientificNames[i]]
+                        });
+                        // {contents: [], accessions: []}
+                        accessionSeqToCache.accessions.push(missedSequences.accessions[i]);
+                        accessionSeqToCache.contents.push(missedSequences.contents[i]);
+                    }
+                    cacheAccession(accessionSeqToCache);
+                }
+                const nonProjectedInput = {
+                    contents: [],
+                    labels: [],
                     accessions: [],
-                    contents: []
+                    commonNames: [],
+                    scientificNames: []
                 }
-                for (let i = 0; i < missedSequences.accessions.length; i++) {
-                    accessionToSequence.set(missedSequences.accessions[i], {
-                        content: missedSequences.contents[i],
-                        label: missedSequences.labels[i],
-                        commonName: missedSequences.commonNames[i],
-                        scientificName: missedSequences.scientificNames[i],
-                        accession: missedSequences.accessions[i]
-                    });
-                    const searchTerm = accessionToSearchTerm.get(missedSequences.accessions[i]);
-                    cacheSearchTermAccessions(searchTerm, {
-                        accessions: [missedSequences.accessions[i]],
-                        labels: [missedSequences.labels[i]],
-                        commonNames: [missedSequences.commonNames[i]],
-                        scientificNames: [missedSequences.scientificNames[i]]
-                    });
-                    // {contents: [], accessions: []}
-                    accessionSeqToCache.accessions.push(missedSequences.accessions[i]);
-                    accessionSeqToCache.contents.push(missedSequences.contents[i]);
+                for (let i = 0; i < accessions.length; i++) {
+                    const seqRes = accessionToSequence.get(accessions[i]);
+                    putNonProjectedItem(nonProjectedInput, seqRes);
                 }
-                cacheAccession(accessionSeqToCache);
+                const map = new Map();
+                for (let i = 0; i < nonProjectedInput.accessions.length; i++) {
+                    map.set(nonProjectedInput.accessions[i], {
+                        label: nonProjectedInput.labels[i],
+                        scientificName: nonProjectedInput.scientificNames[i],
+                        commonName: nonProjectedInput.commonNames[i],
+                        content: nonProjectedInput.contents[i]
+                    });
+                }
+                const projectedInput = {
+                    contents: [],
+                    labels: [],
+                    scientificNames: [],
+                    commonNames: [],
+                    accessions: []
+                }
+                const resultSet = new Set([...nonProjectedInput.accessions]);
+                if (projectionOptions.commonName) {
+                    const itemsUniqueNames = getUniqueAccessions(nonProjectedInput, "commonName");
+                    Object.assign(resultSet, intersect(resultSet, itemsUniqueNames));
+                }
+                if (projectionOptions.scientificName) {
+                    const itemUniqueScientificNames = getUniqueAccessions(nonProjectedInput, "scientificName");
+                    Object.assign(resultSet, intersect(resultSet, itemUniqueScientificNames));
+                }
+                const resultSetArr = Array.from(resultSet);
+                for (let i = 0; i < resultSetArr.length; i++) {
+                    const data = map.get(resultSetArr[i]);
+                    projectedInput.accessions.push(resultSetArr[i]);
+                    projectedInput.labels.push(data.label);
+                    projectedInput.contents.push(data.content);
+                    projectedInput.scientificNames.push(data.scientificName);
+                    projectedInput.commonNames.push(data.commonName);
+                }
+                const ncdInput = {
+                    contents: projectedInput.contents,
+                    labels: projectedInput.accessions
+                }
+                projectedInput.displayLabels = determineDisplayLabels(projectedInput, projectionOptions);
+                let labelMap = getLabelMap(projectedInput);
+                labelMapRef.current = labelMap;
+                setLabelMap(labelMap);
+                ncdWorker.postMessage(ncdInput);
+            } finally {
+                setIsLoading(false);
+                isSearchDisabled(false);
             }
-            const nonProjectedInput = {
-                contents: [],
-                labels: [],
-                accessions: [],
-                commonNames: [],
-                scientificNames: []
-            }
-            for (let i = 0; i < accessions.length; i++) {
-                const seqRes = accessionToSequence.get(accessions[i]);
-                putNonProjectedItem(nonProjectedInput, seqRes);
-            }
-            const map = new Map();
-            for (let i = 0; i < nonProjectedInput.accessions.length; i++) {
-                map.set(nonProjectedInput.accessions[i], {
-                    label: nonProjectedInput.labels[i],
-                    scientificName: nonProjectedInput.scientificNames[i],
-                    commonName: nonProjectedInput.commonNames[i],
-                    content: nonProjectedInput.contents[i]
-                });
-            }
-            const projectedInput = {
-                contents: [],
-                labels: [],
-                scientificNames: [],
-                commonNames: [],
-                accessions: []
-            }
-            const resultSet = new Set([...nonProjectedInput.accessions]);
-            if (projectionOptions.commonName) {
-                const itemsUniqueNames = getUniqueAccessions(nonProjectedInput, "commonName");
-                Object.assign(resultSet, intersect(resultSet, itemsUniqueNames));
-            }
-            if (projectionOptions.scientificName) {
-                const itemUniqueScientificNames = getUniqueAccessions(nonProjectedInput, "scientificName");
-                Object.assign(resultSet, intersect(resultSet, itemUniqueScientificNames));
-            }
-            const resultSetArr = Array.from(resultSet);
-            for (let i = 0; i < resultSetArr.length; i++) {
-                const data = map.get(resultSetArr[i]);
-                projectedInput.accessions.push(resultSetArr[i]);
-                projectedInput.labels.push(data.label);
-                projectedInput.contents.push(data.content);
-                projectedInput.scientificNames.push(data.scientificName);
-                projectedInput.commonNames.push(data.commonName);
-            }
-            const ncdInput = {
-                contents: projectedInput.contents,
-                labels: projectedInput.accessions
-            }
-            projectedInput.displayLabels = determineDisplayLabels(projectedInput, projectionOptions);
-            let labelMap = getLabelMap(projectedInput);
-            labelMapRef.current = labelMap;
-            setLabelMap(labelMap);
-            ncdWorker.postMessage(ncdInput);
         }
     }
 
@@ -428,6 +439,7 @@ export const QSearch = () => {
         labelMapRef.current = new Map();
         setLabelMap(new Map());
         setHasMatrix(false);
+        setQSearchTreeResult(null);
     };
 
 
@@ -451,13 +463,18 @@ export const QSearch = () => {
         }
     };
 
+    const resetAndSetActiveTab = (tab) => {
+        resetDisplay();
+        setActiveTab(tab);
+    }
+
     return (
         <div style={{margin: "20px", textAlign: "center"}}>
             <h1 style={{marginBottom: "20px"}}>NCD Calculator</h1>
             {/* Tab Buttons */}
             <div style={{display: "flex", justifyContent: "center", marginBottom: "20px"}}>
                 <button
-                    onClick={() => setActiveTab("fastaSearch")}
+                    onClick={() => resetAndSetActiveTab("fastaSearch")}
                     style={{
                         padding: "10px 20px",
                         backgroundColor: activeTab === "fastaSearch" ? "#3182ce" : "#e0e0e0",
@@ -471,7 +488,7 @@ export const QSearch = () => {
                     Fasta Search
                 </button>
                 <button
-                    onClick={() => setActiveTab("languageTree")}
+                    onClick={() => resetAndSetActiveTab("languageTree")}
                     style={{
                         padding: "10px 20px",
                         backgroundColor: activeTab === "languageTree" ? "#3182ce" : "#e0e0e0",
@@ -491,9 +508,22 @@ export const QSearch = () => {
                 setConfirmedSearchTerm={setConfirmedSearchTerm} setErrorMsg={setErrorMsg}
                 setExecutionTime={setExecutionTime} labelMapRef={labelMapRef} setLabelMap={setLabelMap}
             />}
-            <MatrixTree hasMatrix={hasMatrix} ncdMatrix={ncdMatrix} labels={labels}
-                        confirmedSearchTerm={confirmedSearchTerm} errorMsg={errorMsg}
-                        qSearchTreeResult={qSearchTreeResult} executionTime={executionTime}/>
+            {(isLoading) && (
+                <div className="flex items-center gap-2 text-slate-600" style={{
+                    paddingLeft: "20px",
+                    color: "#bfdbfe"
+                }}>
+                    <Loader className="animate-spin" size={20}/>
+                    <span>{isLoading ? 'Computing result...' : 'Processing results...'}</span>
+                </div>
+            )}
+            {(!isLoading) && (
+                <MatrixTree hasMatrix={hasMatrix} ncdMatrix={ncdMatrix} labels={labels}
+                            confirmedSearchTerm={confirmedSearchTerm} errorMsg={errorMsg}
+                            qSearchTreeResult={qSearchTreeResult} executionTime={executionTime}/>
+            )
+            }
+
         </div>
     );
 };
