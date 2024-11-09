@@ -1,16 +1,17 @@
-import React, {useEffect, useRef, useState} from "react";
+import {useEffect, useRef, useState} from "react";
 import {workerCode} from "../workers/ncdWorker.js";
 import {
-    getFastaAccessionNumbersFromIds, getFastaList, getFastaListAndParse,
+    getFastaAccessionNumbersFromIds,
+    getFastaList,
+    getFastaListAndParse,
     getSequenceIdsBySearchTerm,
-    parseFasta,
 } from "../functions/getPublicFasta.js";
 import {
     cacheAccession,
     cacheSearchTermAccessions,
     filterValidAccessionAndParse,
-    getCachedSequenceByAccession,
     getCachedAccessionBySearchTerm,
+    getCachedSequenceByAccession,
     initCache,
 } from "../functions/cache.js";
 
@@ -19,11 +20,11 @@ import {getGenbankSequences} from "../functions/getPublicGenbank.js";
 import {LanguageTree} from "./LanguageTree.jsx";
 import {MatrixTree} from "./MatrixTree.jsx";
 import {FastaSearch} from "./FastaSearch.jsx";
-import {ChevronRight, X, Info, Loader} from 'lucide-react';
+import {parseFasta} from "../functions/fasta.js";
+import {Loader} from 'lucide-react';
 
 
 export const QSearch = () => {
-    const MAX_IDS_FETCH = 40;
     const [ncdMatrix, setNcdMatrix] = useState([]);
     const [labels, setLabels] = useState([]);
     const [hasMatrix, setHasMatrix] = useState(false);
@@ -47,26 +48,39 @@ export const QSearch = () => {
         qSearchWorkerRef.current.onmessage = handleQsearchMessage;
     }, []);
 
-    const handleFastaData = (data, fileNames) => {
-        const parsed = parseFasta(data, fileNames);
-        if (fileNames) {
+    const handleFastaData = (parsedFasta) => {
+        if (parsedFasta.valid) {
+            console.log('parsed fasta data: ' + JSON.stringify(parsedFasta));
             const map = {
                 displayLabels: [],
                 accessions: [],
             }
-            for (let i = 0; i < parsed.contents.length; i++) {
-                map.displayLabels.push(fileNames[i]);
-                map.accessions.push(parsed.labels[i]);
+            for (let i = 0; i < parsedFasta.data.length; i++) {
+                map.displayLabels.push(parsedFasta.data[i].accession);
+                map.accessions.push(parsedFasta.data[i].accession);
             }
             const labelMap = getLabelMap(map);
             setLabelMap(labelMap);
             labelMapRef.current = labelMap;
+            ncdWorker.postMessage(
+                getNcdInput(parsedFasta)
+            );
         }
-        ncdWorker.postMessage({
-            labels: parsed.labels,
-            contents: parsed.contents,
-        });
-    };
+    }
+
+
+    const getNcdInput = (fastaList) => {
+        const input = {
+            contents: [],
+            labels: []
+        };
+        for (let i = 0; i < fastaList.length; i++) {
+            const fasta = fastaList[i];
+            input.labels.push(fasta.accession);
+            input.contents.push(fasta.sequence);
+        }
+        return input;
+    }
 
     const displayNcdMatrix = (response) => {
         const {labels, ncdMatrix} = response;
@@ -275,7 +289,7 @@ export const QSearch = () => {
     }
 
     // the projected input is guaranteed to have unique values in some project option field
-    const determineDisplayLabels = (projectedInput, projectionOptions) => {
+    const determineDisplayLabels = (projectedInput) => {
         let displayLabels = [];
         if (allNonEmpty(projectedInput.accessions) && shouldUseOption(projectedInput.accessions)) {
             displayLabels = projectedInput.accessions;

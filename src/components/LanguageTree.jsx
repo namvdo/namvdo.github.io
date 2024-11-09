@@ -1,7 +1,6 @@
-import React, {useState, useEffect} from 'react';
+import React, {useEffect, useState} from 'react';
 import {getTranslationResponse, LANGUAGE_NAMES} from '../functions/udhr.js';
-import {ChevronRight, X, Info, Loader} from 'lucide-react';
-import {cacheTranslation, getTranslationCache} from "../functions/cache.js";
+import {ChevronRight, X} from 'lucide-react';
 
 export const LanguageTree = ({ncdWorker, labelMapRef, setLabelMap}) => {
     const [searchTerm, setSearchTerm] = useState('');
@@ -10,12 +9,9 @@ export const LanguageTree = ({ncdWorker, labelMapRef, setLabelMap}) => {
     const [isLoading, setIsLoading] = useState(false);
     const [isSearchDisabled, setIsSearchDisabled] = useState(true);
     const [isProcessing, setIsProcessing] = useState(false);
-
     const MIN_LANGUAGES = 4;
 
-    const handleInputChange = (e) => {
-        setSearchTerm(e.target.value);
-    };
+    const handleInputChange = (e) => setSearchTerm(e.target.value);
 
     const filteredLanguages = availableLanguages.filter((languageCode) =>
         LANGUAGE_NAMES[languageCode].toLowerCase().includes(searchTerm.toLowerCase())
@@ -38,6 +34,7 @@ export const LanguageTree = ({ncdWorker, labelMapRef, setLabelMap}) => {
             setIsSearchDisabled(true);
         }
     };
+
 
     const onPerformSearch = async () => {
         setIsLoading(true);
@@ -135,8 +132,8 @@ export const LanguageTree = ({ncdWorker, labelMapRef, setLabelMap}) => {
                                 className="flex justify-between items-center p-4 bg-slate-50 border border-slate-200
                                          rounded-lg cursor-pointer hover:bg-slate-100 transition-all"
                             >
-                                <div className="text-slate-700">{LANGUAGE_NAMES[languageCode]}</div>
-                                <ChevronRight size={20} className="text-slate-400"/>
+                                <div style={{color: '#2d3748'}}>{LANGUAGE_NAMES[languageCode]}</div>
+                                <ChevronRight size={20} color="#a0aec0"/>
                             </div>
                         ))}
                         {filteredLanguages.length === 0 && (

@@ -1,37 +1,20 @@
 import React, {useCallback, useState} from "react";
-import {isCleanFastaSequence} from "../functions/getPublicFasta.js";
 import {useDropzone} from 'react-dropzone'
 import {X} from "lucide-react";
+import {parseFasta} from "../functions/fasta.js";
 
 export const FileDrop = ({onFastaData}) => {
-    const isFastaFormat = (content) => {
-        const lines = content.split("\n").filter((line) => line.trim());
-        if (lines.length === 0) return false;
-
-        if (!lines[0].startsWith(">")) return false;
-
-        let hasSequenceData = false;
-        for (let i = 1; i < lines.length; i++) {
-            const line = lines[i].trim();
-            if (line.startsWith(">")) {
-                if (!hasSequenceData) return false;
-            } else {
-                if (!/^[A-Za-z*\-\.]+$/.test(line)) return false;
-                hasSequenceData = true;
-            }
-        }
-        return hasSequenceData;
-    };
 
     const readFile = (file) => {
         return new Promise((resolve) => {
             const reader = new FileReader();
             reader.onload = (e) => {
                 const content = e.target.result;
-                if (isFastaFormat(content) || isCleanFastaSequence(content)) {
+                const parsed = parseFasta(content);
+                if (parsed.valid) {
                     resolve({
                         filename: file.name,
-                        content: content,
+                        content: parsed.data,
                         isValid: true,
                     });
                 } else {
@@ -58,25 +41,22 @@ export const FileDrop = ({onFastaData}) => {
     const searchByUploadedFiles = useCallback(
         async (files) => {
             const fileContents = [];
-
             // Read files sequentially to maintain order
             for (const file of files) {
                 const result = await readFile(file);
                 fileContents.push(result);
             }
-
             const validFastaData = fileContents
                 .filter((file) => file.isValid)
                 .map((file) => file.content);
-
-            if (validFastaData.length > 0) {
-                if (!isCleanFastaSequence(validFastaData[0])) {
-                    onFastaData(validFastaData.join("\n"), files.map(file => file.name));
-                } else {
-                    onFastaData(validFastaData, files.map(file => file.name));
+            if (validFastaData && validFastaData.length > 0) {
+                const resp = {
+                    valid: true,
+                    clean: true,
+                    validFastaData
                 }
+                onFastaData(resp);
             }
-
             const invalidFiles = fileContents.filter((file) => !file.isValid);
             if (invalidFiles.length > 0) {
                 console.warn("Invalid files:", invalidFiles);

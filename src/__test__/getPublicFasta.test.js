@@ -1,19 +1,20 @@
 /* eslint-disable */
-import {test, expect, assert} from "vitest";
+import {expect, test} from "vitest";
 import {
     getApiResponse,
-    getFastaAccessionNumbersFromIds, getFastaAccessionNumbersFromIdsUri,
-    getSequenceIdsBySearchTermUri,
+    getFastaAccessionNumbersFromIds,
+    getFastaAccessionNumbersFromIdsUri,
     getFastaList,
     getFastaListUri,
+    getSequenceIdsBySearchTermUri,
     parseFasta
 } from "../functions/getPublicFasta.js";
 import {Parser} from "xml2js"
-import {readFileSync, writeFile} from "fs";
+import {readFileSync} from "fs";
 
 import {parseAccessionNumber} from "../functions/cache.js";
 import {join} from "node:path";
-import * as path from "node:path";
+import {parseFasta} from "../functions/fasta.js";
 
 const parser = new Parser([]);
 const searchTerm = "buffalo";
@@ -26,7 +27,7 @@ const getSampleFasta = () => {
 
 const SAMPLE_FASTA = JSON.parse(getSampleFasta());
 const IDS = SAMPLE_FASTA.map(json => json.id);
-const ACCESSIONS = SAMPLE_FASTA.map(json => json.acessionNumbers);
+const ACCESSIONS = SAMPLE_FASTA.map(json => json.accessionNumber);
 const SEQUENCES = SAMPLE_FASTA.map(json => json.sequence);
 
 test('test fetch fasta IDs for buffalo', async () => {
