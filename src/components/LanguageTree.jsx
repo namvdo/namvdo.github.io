@@ -1,6 +1,7 @@
 import React, {useState, useEffect} from 'react';
 import {getTranslationResponse, LANGUAGE_NAMES} from '../functions/udhr.js';
 import {ChevronRight, X} from 'lucide-react';
+import {cacheTranslation, getTranslationCache} from "../functions/cache.js";
 
 export const LanguageTree = ({ncdWorker, labelMapRef, setLabelMap}) => {
     const [searchTerm, setSearchTerm] = useState('');
@@ -28,21 +29,23 @@ export const LanguageTree = ({ncdWorker, labelMapRef, setLabelMap}) => {
             labels: []
         }
         for(let i = 0; i < selectedLanguages.length; i++) {
-            const label = selectedLanguages[i];
-            const text = await getTranslationResponse(label);
-            if (text) {
-                ncdInput.contents.push(text);
-                ncdInput.labels.push(label);
+            const lang = selectedLanguages[i];
+            const translationCached = getTranslationCache(lang);
+            if (translationCached) {
+                ncdInput.labels.push(lang);
+                ncdInput.contents.push(translationCached);
+            } else {
+                const text = await getTranslationResponse(lang);
+                if (text && text.trim() !== '') {
+                    cacheTranslation(lang, text);
+                    ncdInput.labels.push(lang);
+                    ncdInput.contents.push(text);
+                }
             }
         }
         const labelMap = getDisplayLabelMap(selectedLanguages);
         labelMapRef.current = labelMap;
         setLabelMap(labelMap);
-        const thing = ncdInput;
-        for(let i = 0; i < thing.contents.length; i++) {
-           thing.contents[i]  = thing.labels[i] + ": " + thing.contents[i];
-        }
-        console.log("ncd input: " + JSON.stringify(thing));
         ncdWorker.postMessage(ncdInput);
     }
 
