@@ -1,7 +1,5 @@
 import {useEffect, useRef, useState} from "react";
 import {workerCode} from "../workers/ncdWorker.js";
-import {FileDrop} from "./FileDrop.jsx";
-import MatrixTable from "./MatrixTable.jsx";
 import {
     getFastaAccessionNumbersFromIds, getFastaList, getFastaListAndParse,
     getSequenceIdsBySearchTerm,
@@ -45,9 +43,8 @@ export const QSearch = () => {
         qSearchWorkerRef.current.onmessage = handleQsearchMessage;
     }, []);
 
-    const handleFastaData = (data, fileNames, sequences) => {
+    const handleFastaData = (data, fileNames) => {
         const parsed = parseFasta(data, fileNames);
-        const map = new Map();
         if (fileNames) {
             const map = {
                 displayLabels: [],
@@ -489,7 +486,11 @@ export const QSearch = () => {
             </div>
             {activeTab === 'fastaSearch' &&
                 <FastaSearch handleFastaData={handleFastaData} performSearch={performSearch}/>}
-            {activeTab === 'languageTree' && <LanguageTree/>}
+            {activeTab === 'languageTree' && <LanguageTree
+                ncdWorker={ncdWorker}
+                setConfirmedSearchTerm={setConfirmedSearchTerm} setErrorMsg={setErrorMsg}
+                setExecutionTime={setExecutionTime} labelMapRef={labelMapRef} setLabelMap={setLabelMap}
+            />}
             <MatrixTree hasMatrix={hasMatrix} ncdMatrix={ncdMatrix} labels={labels}
                         confirmedSearchTerm={confirmedSearchTerm} errorMsg={errorMsg}
                         qSearchTreeResult={qSearchTreeResult} executionTime={executionTime}/>
