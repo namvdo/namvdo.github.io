@@ -1,6 +1,7 @@
 import React, {useEffect, useState} from 'react';
 import {getTranslationResponse, LANGUAGE_NAMES} from '../functions/udhr.js';
-import {ChevronRight, X} from 'lucide-react';
+import {ChevronRight, X, Info, Loader} from 'lucide-react';
+import {cacheTranslation, getTranslationCache} from "../functions/cache.js";
 
 export const LanguageTree = ({ncdWorker, labelMapRef, setLabelMap}) => {
     const [searchTerm, setSearchTerm] = useState('');
