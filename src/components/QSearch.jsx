@@ -335,9 +335,9 @@ export const QSearch = () => {
         const moreSeq = {};
         if (emptySeqAccessions.length > 0) {
             const fastaContent = await getFastaListAndParse(emptySeqAccessions);
-            for (let i = 0; i < fastaContent.contents.length; i++) {
-                const sequence = fastaContent.contents[i];
-                const accession = fastaContent.labels[i].toLowerCase().trim();
+            for (let i = 0; i < fastaContent.data.length; i++) {
+                const sequence = fastaContent.data[i].sequence;
+                const accession = fastaContent.data[i].accession.toLowerCase().trim();
                 for (let j = 0; j < data.accessions.length; j++) {
                     if (data.accessions[j] === accession) {
                         data.contents[j] = sequence;
@@ -432,7 +432,7 @@ export const QSearch = () => {
                     // fall back to get the fasta sequence when sequence from genbank data is empty
                     const fasta = await getFastaList(ids);
                     let parsedFasta = parseFasta(fasta);
-                    data.contents[0] = parsedFasta.contents[0];
+                    data.contents[0] = parsedFasta.data[0].sequence;
                 }
                 data.cacheHit = false;
                 return data;
