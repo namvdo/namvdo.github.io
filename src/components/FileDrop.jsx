@@ -48,12 +48,16 @@ export const FileDrop = ({onFastaData}) => {
             }
             const validFastaData = fileContents
                 .filter((file) => file.isValid)
-                .map((file) => file.content);
+                .flatMap((file) => file.content);
             if (validFastaData && validFastaData.length > 0) {
+                const data = [];
+                for (let i = 0; i < validFastaData.length; i++) {
+                    data.push(validFastaData[i]);
+                }
                 const resp = {
                     valid: true,
                     clean: true,
-                    validFastaData
+                    data: data
                 }
                 onFastaData(resp);
             }
