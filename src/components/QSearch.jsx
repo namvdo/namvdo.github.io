@@ -20,7 +20,7 @@ import {getGenbankSequences} from "../functions/getPublicGenbank.js";
 import {LanguageTree} from "./LanguageTree.jsx";
 import {MatrixTree} from "./MatrixTree.jsx";
 import {FastaSearch} from "./FastaSearch.jsx";
-import {parseFasta} from "../functions/fasta.js";
+import {parseFastaAndClean} from "../functions/fasta.js";
 import { Loader} from "lucide-react";
 
 
@@ -431,7 +431,7 @@ export const QSearch = () => {
                 if (!data.contents[0] || data.contents[0].trim() === '') {
                     // fall back to get the fasta sequence when sequence from genbank data is empty
                     const fasta = await getFastaList(ids);
-                    let parsedFasta = parseFasta(fasta);
+                    let parsedFasta = parseFastaAndClean(fasta);
                     data.contents[0] = parsedFasta.data[0].sequence;
                 }
                 data.cacheHit = false;

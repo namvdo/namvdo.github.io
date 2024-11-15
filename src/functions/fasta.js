@@ -12,6 +12,89 @@ export const hasMetadata = (content) => {
 }
 
 
+export const parseMultipleMetadataAndClean = (content) => {
+    return parseMultipleMetadata(content).map(metadata => {
+        return Object.fromEntries(
+            Object.entries(metadata).map(([key, value]) => [
+                key,
+                typeof value === 'string' ? value.toLowerCase() : value
+            ])
+        );
+    });
+};
+
+export const parseMultipleMetadata = (content) => {
+    if (!content || content.trim() === '') {
+        return [];
+    }
+    return parseFasta(content).map(fasta => {
+        return {
+            commonName: fasta.commonName,
+            scientificName: fasta.scientificName,
+            accession: fasta.accession
+        };
+    });
+};
+
+
+export const parseFasta = (content) => {
+    if (!content || content.trim() === '') {
+        return [];
+    }
+    const lines = content.split("\n");
+    const isHeadless = !hasMetadata(content);
+    if (isHeadless) {
+        // if it's headless then sequences must be separated by 1 line of spaces
+        let sequences = [];
+        let currentSequence = "";
+        lines.forEach(line => {
+            if (line.trim() === "") {
+                if (currentSequence) {
+                    sequences.push({
+                        sequence: currentSequence
+                    })
+                    currentSequence = "";
+                }
+            } else {
+                currentSequence += line.trim();
+            }
+        })
+        if (currentSequence) {
+            sequences.push({
+                sequence: currentSequence
+            })
+        }
+        return sequences;
+    } else {
+        let currentHeader = {};
+        let currentSequence = "";
+        let sequences = [];
+        lines.forEach(line => {
+            if (line.startsWith(">") || line.trim() === '') {
+                if (currentHeader && currentSequence) {
+                    sequences.push({
+                        ...currentHeader,
+                        sequence: currentSequence
+                    });
+                    currentHeader = {};
+                    currentSequence = "";
+                }
+                currentHeader = parseMetadata(line);
+            } else {
+                currentSequence += line.trim();
+            }
+        });
+        if (currentHeader && currentSequence) {
+            sequences.push(
+                {
+                    ...currentHeader,
+                    sequence: currentSequence
+                }
+            )
+        }
+        return sequences;
+    }
+}
 export const parseMetadata = (content) => {
     if (!hasMetadata(content)) {
         return {};
@@ -99,7 +182,7 @@ export const validSequence = (content) => {
 }
 
 
-export const parseFasta = (fastaData) => {
+export const parseFastaAndClean = (fastaData) => {
     const lines = fastaData.split("\n").map(line => line.toLowerCase());
     let currentHeader = {};
     let currentSequence = "";

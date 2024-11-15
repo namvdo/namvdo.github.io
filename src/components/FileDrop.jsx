@@ -1,7 +1,7 @@
 import React, {useCallback, useState} from "react";
 import {useDropzone} from 'react-dropzone'
 import {X} from "lucide-react";
-import {parseFasta} from "../functions/fasta.js";
+import {parseFastaAndClean} from "../functions/fasta.js";
 
 export const FileDrop = ({onFastaData}) => {
 
@@ -10,7 +10,7 @@ export const FileDrop = ({onFastaData}) => {
             const reader = new FileReader();
             reader.onload = (e) => {
                 const content = e.target.result;
-                const parsed = parseFasta(content);
+                const parsed = parseFastaAndClean(content);
                 if (parsed.valid) {
                     resolve({
                         filename: file.name,

@@ -1,6 +1,6 @@
 import {getApiResponseText} from "./fetch.js";
 import {encodeURIWithApiKey} from "./api.js";
-import {parseFasta} from "./fasta.js";
+import {parseFastaAndClean} from "./fasta.js";
 
 
 export const getApiResponse = async (uri) => {
@@ -21,7 +21,7 @@ export const getFastaList = async (idList, apiKey) => {
 export const getFastaListAndParse = async (idList, apiKey) => {
     const FETCH_URI = getFastaListUri(idList, apiKey) ;
     const data = await getApiResponseText(FETCH_URI);
-    return parseFasta(data);
+    return parseFastaAndClean(data);
 }
 
 

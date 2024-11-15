@@ -28,6 +28,9 @@ jobs:
         env:
           VITE_API_URL: ${{ secrets.VITE_API_URL }}
 
+      - name: Run Tests
+        run: npm test
+
       - name: Setup Serverless Functions
         run: |
           mkdir -p dist/api

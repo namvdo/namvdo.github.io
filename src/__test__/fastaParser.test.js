@@ -6,7 +6,9 @@ import {
     isValidFastaSequenceWithHeader,
     isValidFastaSequenceWithoutHeader,
     parseFasta,
+    parseFastaAndClean,
     parseMetadata,
+    parseMultipleMetadataAndClean,
     validSequence
 } from "../functions/fasta.js";
 
@@ -107,7 +109,7 @@ test("validSequence returns false for invalid characters in sequence", () => {
 // Test cases for parseMultipleFasta function
 test("parseMultipleFasta correctly parses multiple sequences", () => {
     const fastaData = ">seq1 Homo sapiens (Human)\nATCG\nTAGC\n>seq2 Mus musculus (Mouse)\nGCTA\nAGCT";
-    const parsed = parseFasta(fastaData).data;
+    const parsed = parseFastaAndClean(fastaData).data;
     expect(parsed).toEqual([
         {
             accession: "seq1",
@@ -126,6 +128,52 @@ test("parseMultipleFasta correctly parses multiple sequences", () => {
 
 test("parseMultipleFasta handles empty input gracefully", () => {
     const fastaData = "";
-    const parsed = parseFasta(fastaData).data;
+    const parsed = parseFastaAndClean(fastaData).data;
     expect(parsed).toEqual([]);
 });
+
+
+test("test parseFasta with multiple sequences with headers", () => {
+    const fastaData = ">seq1 scientificName1 (commonName1)\nATGCATGGGGGCCGGA\n>seq2 scientificName2 (commonName2)\nAAGTAAGTTAG";
+    const parsed = parseFastaAndClean(fastaData);
+    expect(parsed.data.length).toBe(2);
+    const expected = {
+        data: [
+            {
+                accession: 'seq1',
+                scientificName: 'scientificname1',
+                commonName: 'commonname1',
+                sequence: 'atgcatgggggccgga'
+            },
+            {
+                accession: 'seq2',
+                scientificName: 'scientificname2',
+                commonName: 'commonname2',
+                sequence: 'aagtaagttag'
+            }
+        ]
+    }
+    for (let i = 0; i < parsed.data.length; i++) {
+        expect(parsed.data[i]).toStrictEqual(expected.data[i])
+    }
+    let parsedMetadata = parseMultipleMetadataAndClean(fastaData);
+    for (let i = 0; i < parsedMetadata.length; i++) {
+        expect(parsedMetadata[i]).toStrictEqual({
+            accession: expected.data[i].accession,
+            scientificName: expected.data[i].scientificName,
+            commonName: expected.data[i].commonName
+        })
+    }
+})
+
+test('parse multiple fasta without headers', () => {
+    const sequences = "ATGCCCAATGGGGGGGAAA\n   \nATTTTTGGGGAAACCCCC";
+    const hasHeader = hasMetadata(sequences);
+    const parsed = parseFasta(sequences);
+    const expected = [{ sequence: "ATGCCCAATGGGGGGGAAA"}, { sequence: "ATTTTTGGGGAAACCCCC" }];
+    expect(parsed.length).toBe(2);
+    expect(hasHeader).toBe(false);
+    for(let i = 0; i < parsed.length; i++) {
+        expect(parsed[i].sequence).toStrictEqual(expected[i].sequence);
+    }
+})
