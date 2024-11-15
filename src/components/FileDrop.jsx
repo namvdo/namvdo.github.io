@@ -1,70 +1,25 @@
 import React, {useCallback, useState} from "react";
 import {useDropzone} from 'react-dropzone'
 import {X} from "lucide-react";
-import {parseFastaAndClean} from "../functions/fasta.js";
+import {getAllValidFilesOrError, getFile} from "../functions/file.js";
 
 export const FileDrop = ({onFastaData}) => {
-
-    const readFile = (file) => {
-        return new Promise((resolve) => {
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                const content = e.target.result;
-                const parsed = parseFastaAndClean(content);
-                if (parsed.valid) {
-                    resolve({
-                        filename: file.name,
-                        content: parsed.data,
-                        isValid: true,
-                    });
-                } else {
-                    console.warn(`File ${file.name} is not in valid FASTA format`);
-                    resolve({
-                        filename: file.name,
-                        content: content,
-                        isValid: false,
-                        error: "Invalid FASTA format",
-                    });
-                }
-            };
-            reader.onerror = () => {
-                resolve({
-                    filename: file.name,
-                    isValid: false,
-                    error: "Error reading file",
-                });
-            };
-            reader.readAsText(file);
-        });
-    };
-
+    const [error, setError] = useState("");
     const searchByUploadedFiles = useCallback(
+        // must be fasta or text cannot mix
         async (files) => {
-            const fileContents = [];
-            // Read files sequentially to maintain order
-            for (const file of files) {
-                const result = await readFile(file);
-                fileContents.push(result);
+            const fileInfos = [];
+            for(const file of files) {
+                const f = await getFile(file);
+                fileInfos.push(f);
             }
-            const validFastaData = fileContents
-                .filter((file) => file.isValid)
-                .flatMap((file) => file.content);
-            if (validFastaData && validFastaData.length > 0) {
-                const data = [];
-                for (let i = 0; i < validFastaData.length; i++) {
-                    data.push(validFastaData[i]);
-                }
-                const resp = {
-                    valid: true,
-                    clean: true,
-                    data: data
-                }
-                onFastaData(resp);
-            }
-            const invalidFiles = fileContents.filter((file) => !file.isValid);
-            if (invalidFiles.length > 0) {
-                console.warn("Invalid files:", invalidFiles);
-            }
+            getAllValidFilesOrError(fileInfos).fold(
+                error => {
+                    console.error("some error bro: " + JSON.stringify(error));
+                },
+                fileInfo => console.log("all valid: " + JSON.stringify(fileInfo))
+            )
+
         },
         [onFastaData]
     );
@@ -84,6 +39,7 @@ export const FileDrop = ({onFastaData}) => {
         onDrop: handleIncrementalDrop,
         multiple: true, // multiple files upload
     });
+
 
     return (
         <>

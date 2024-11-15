@@ -154,6 +154,11 @@ export const isValidFastaSequenceWithHeader = (content) => {
     }
 }
 
+
+export const isValidFasta = (content) => {
+    return isValidFastaSequenceWithHeader(content) || isValidFastaSequenceWithoutHeader(content);
+}
+
 const getOnlySequence = (content) => {
     if (hasMetadata(content)) {
         let seq = "";
