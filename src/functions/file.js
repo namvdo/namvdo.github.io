@@ -14,10 +14,11 @@ const SUPPORTED_FILE_FORMATS = [
         ext: "txt",
         isSupportedFormat: (content) => {
             try {
-               const buffer = Buffer.isBuffer(content) ? content : Buffer.from(content);
-               const decoded = buffer.toString('utf-8');
-               const reEncoded = Buffer.from(decoded, 'utf-8');
-               return buffer.equals(reEncoded);
+                // Convert the content to a Uint8Array
+                const buffer = typeof content === 'string' ? new TextEncoder().encode(content) : new Uint8Array(content);
+                const decoded = new TextDecoder().decode(buffer);
+                const reEncoded = new TextEncoder().encode(decoded);
+                return buffer.every((value, index) => value === reEncoded[index]);
             } catch (error) {
                 return false;
             }
@@ -74,7 +75,7 @@ export const getFile = async (file) => {
         reader.onload = (e) => {
             const content = e.target.result;
             resolve({
-                name: file.name,
+                name: getFileNameWithoutExtension(file.name),
                 ext: getFileExtension(file.name),
                 content: content,
                 isValid: true,
@@ -93,15 +94,23 @@ export const getFile = async (file) => {
 };
 
 
+export const getFileNameWithoutExtension = fileName => {
+    const lastDotIndex = fileName.lastIndexOf(".");
+    if (lastDotIndex === -1) {
+        return fileName;
+    }
+    return fileName.substring(0, lastDotIndex);
+}
+
 export const allFilesWithFormat = async (files, format) => {
     if (!files || files.length === 0) return false;
     const fileInfos =  [];
     for(let i = 0; i < files.length; i++) {
-        const fileInfo = await getFile(files[i]);
+        const fileInfo = files[i];
         if (!isSupported(fileInfo.ext, fileInfo.content)) {
             return false;
         }
-        if (fileInfo.ext !== format) {
+        if (format === "fasta" && (fileInfo.ext !== "fasta" && !isValidFasta(fileInfo.content))) {
             return false;
         }
         fileInfos.push(fileInfo) ;
@@ -109,22 +118,35 @@ export const allFilesWithFormat = async (files, format) => {
     return fileInfos.length === files.length;
 }
 
-export const allFilesWithSupportedFormat = (files) => {
+export const allFilesWithSupportedFormat = async (files) => {
     for(let i = 0; i < SUPPORTED_FILE_FORMATS.length; i++) {
         const format = SUPPORTED_FILE_FORMATS[i];
         const ext = format.ext;
-        const supported = allFilesWithFormat(files, ext);
-        if (supported) {
+        const hasFasta = hasAnyFasta(files);
+        const supported = await allFilesWithFormat(files, ext);
+        if (hasFasta && !supported) {
+            return false;
+        } else if (hasFasta && supported) {
+            return true;
+        } else if (!hasFasta && supported) {
             return true;
         }
     }
     return false;
+
 }
+
+
+const hasAnyFasta = files => {
+    return files.filter(file => file.ext === "fasta" || isValidFasta(file.content)).length > 0;
+}
+
+
 
 
 const getFileEither = (file) => {
     if (!isSupported0(file)) {
-        return Either.left("The file is not supported! Supported formats: " + getSupportedFileExtensions().join(", "));
+        return Either.left("The chosen files contain unsupported file format. Supported formats: " + getSupportedFileExtensions().join(", "));
     } else {
        return Either.right(file);
     }
@@ -133,11 +155,15 @@ const getFileEither = (file) => {
 
 
 
-export const getAllValidFilesOrError = (files) => {
+export const getAllValidFilesOrError = async (files) => {
     const result = Array.from(files).map(getFileEither);
     const errors = result.filter(rs => rs.isLeft()).map(rs => rs.left);
     if (errors.length > 0) {
         return Either.left(errors[0]);
+    }
+    const allTheSameSupportedFormat = await allFilesWithSupportedFormat(result.map(result => result.right));
+    if (!allTheSameSupportedFormat) {
+        return Either.left("All files must be in the same format. Supported formats: " + getSupportedFileExtensions().join(", "));
     }
     return Either.right(
         result.map(rs => rs.right)

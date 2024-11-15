@@ -188,42 +188,12 @@ export const validSequence = (content) => {
 
 
 export const parseFastaAndClean = (fastaData) => {
-    const lines = fastaData.split("\n").map(line => line.toLowerCase());
-    let currentHeader = {};
-    let currentSequence = "";
-    const sequences = [];
-
-    lines.forEach(line => {
-        if (line.startsWith(">") || line.trim() === '') {
-            if (currentHeader && currentSequence) {
-                const cleanSequence = getCleanSequence(currentSequence);
-                sequences.push(
-                    {
-                        ...currentHeader,
-                        sequence: cleanSequence
-                    }
-                );
-                currentHeader = {};
-                currentSequence = "";
-            }
-            if (hasMetadata(line)) {
-                currentHeader = parseMetadata(line);
-            }
-        } else {
-            currentSequence += line.trim();
-        }
-    });
-    if (currentHeader && currentSequence) {
-        sequences.push({
-            ...currentHeader,
-            sequence: currentSequence
-        })
+    const fastaList = parseFasta(fastaData);
+    for(let i = 0; i < fastaList.length; i++) {
+        const fasta = fastaList[i];
+        fasta.sequence = getCleanSequence(fasta.sequence);
     }
-    return {
-        data: sequences,
-        valid: true,
-        clean: true
-    }
+    return fastaList;
 }
 
 
