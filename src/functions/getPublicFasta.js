@@ -19,8 +19,7 @@ export const getFastaList = async (idList, apiKey) => {
 
 
 export const getFastaListAndParse = async (idList, apiKey) => {
-    const FETCH_URI = getFastaListUri(idList, apiKey) ;
-    const data = await getApiResponseText(FETCH_URI);
+    const data = await getFastaList(idList, apiKey) ;
     return parseFastaAndClean(data);
 }
 
