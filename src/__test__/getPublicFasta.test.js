@@ -7,14 +7,14 @@ import {
     getFastaList,
     getFastaListUri,
     getSequenceIdsBySearchTermUri,
-    parseFasta
+    parseFastaAndClean
 } from "../functions/getPublicFasta.js";
 import {Parser} from "xml2js"
 import {readFileSync} from "fs";
 
 import {parseAccessionNumber} from "../functions/cache.js";
 import {join} from "node:path";
-import {parseFasta} from "../functions/fasta.js";
+import {parseFastaAndClean} from "../functions/fasta.js";
 
 const parser = new Parser([]);
 const searchTerm = "buffalo";
@@ -50,7 +50,7 @@ test('test fetch accessions numbers from fasta IDs', async () => {
 test('test fetch sequence responses from fasta IDs', async () => {
     const fastaListUri = getFastaListUri(IDS, apiKey);
     const sequenceResponse = await fetchWithRetry(getApiResponse, fastaListUri);
-    let parsed = parseFasta(sequenceResponse);
+    let parsed = parseFastaAndClean(sequenceResponse);
     expect(arraysEqual(parsed.contents, SEQUENCES));
 });
 
@@ -61,7 +61,7 @@ test('test fetch fasta list from search term', async () => {
     let accessionUris = await fetchWithRetry(getFastaAccessionNumbersFromIds, ids);
     expect(arraysEqual(accessionUris, ACCESSIONS));
     let fastaList = await fetchWithRetry(getFastaList, ids);
-    let parsed = parseFasta(fastaList);
+    let parsed = parseFastaAndClean(fastaList);
     expect(arraysEqual(parsed.contents, SEQUENCES));
 })
 
