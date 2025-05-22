@@ -1,65 +1,18 @@
 name: Deploy
-
 on:
   push:
     branches:
       - master
-
 jobs:
-  build-and-deploy:
+  deploy:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'
-
-      - name: Install Dependencies
-        run: |
-          npm install
-          npm install @vercel/node --save-dev
-
-      - name: Build Frontend
-        run: npm run build
-        env:
-          VITE_API_URL: ${{ secrets.VITE_API_URL }}
-
-      - name: Run Tests
-        run: npm test
-
-      - name: Setup Serverless Functions
-        run: |
-          mkdir -p dist/api
-          cp -r api/* dist/api/
-
-      - name: Create Vercel Configuration
-        run: |
-          echo '{
-            "version": 2,
-            "routes": [
-              { "handle": "filesystem" },
-              { "src": "/api/(.*)", "dest": "/api/$1" },
-              { "src": "/(.*)", "dest": "/index.html" }
-            ]
-          }' > dist/vercel.json
-
+      
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
           publish_dir: ./dist
           cname: namvdo.github.io
-
-      - name: Deploy to Vercel
-        env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
-        run: |
-            vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
-            vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
-            vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }}
