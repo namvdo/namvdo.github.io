@@ -21,16 +21,15 @@ async function initWasm(wasmUrl) {
     const moduleFactory = await import(wasmUrl);
     console.log('[Worker] Module factory loaded.');
 
-    // Configure module without threading and with imported memory
+    // Simple, safe module configuration
     const moduleConfig = {
         print: (text) => console.log('[WASM Print]', text),
         printErr: (text) => console.error('[WASM Error]', text),
         locateFile: (path) => {
             console.log('[Worker] Locating file:', path);
             return wasmUrl.replace('lux.js', path);
-        },
-        // Remove wasmMemory configuration to use imported memory
-        importMemory: true
+        }
+        // Removed all memory-related configurations to let Emscripten handle it
     };
 
     try {
@@ -99,71 +98,64 @@ function reportDetailedError(context, cppError, jsError = null) {
     return fullErrorMessage;
 }
 
-// Process frames in batches
+// Process frames with ultra-optimized batching for 30fps
 async function processFrameQueue() {
     if (isProcessingFrames || frameQueue.length === 0) return;
     
     isProcessingFrames = true;
-    const batchSize = 5; // Process 5 frames at a time
-
+    
     try {
+        // Process ALL queued frames immediately for 30fps performance
         while (frameQueue.length > 0 && recordingInProgress) {
-            const batch = frameQueue.splice(0, batchSize);
+            const frame = frameQueue.shift(); // Process oldest frame first
             
-            for (const frame of batch) {
-                const frameStartTime = performance.now();
-                try {
-                    const success = CppModule.worker_add_frame(
-                        frame.imageData,
-                        frame.width,
-                        frame.height
-                    );
-                    
-                    const frameEndTime = performance.now();
-                    const processingTime = frameEndTime - frameStartTime;
-                    frameProcessingTimes.push(processingTime);
-                    
-                    if (success) {
-                        frameCount++;
-                        if (frameCount % 30 === 0) {
-                            const avgProcessingTime = frameProcessingTimes.reduce((a, b) => a + b, 0) / frameProcessingTimes.length;
-                            const totalDuration = (performance.now() - recordingStartTime) / 1000;
-                            const actualFps = frameCount / totalDuration;
-                            
-                            console.log(`[Worker] Performance metrics:
-                                Frame #${frameCount}
-                                Queue size: ${frameQueue.length}
-                                Avg processing time: ${avgProcessingTime.toFixed(2)}ms
-                                Total duration: ${totalDuration.toFixed(2)}s
-                                Actual FPS: ${actualFps.toFixed(2)}
-                                Target FPS: 30`);
-                            
-                            self.postMessage({ 
-                                type: 'recordingProgress',
-                                frameCount: frameCount,
-                                metrics: {
-                                    avgProcessingTime,
-                                    totalDuration,
-                                    actualFps,
-                                    queueSize: frameQueue.length
-                                }
-                            });
-                            
-                            // Reset metrics for next batch
-                            frameProcessingTimes = [];
-                        }
-                    } else {
-                        console.error('[Worker] Failed to add frame');
-                        self.postMessage({ type: 'error', error: 'Failed to add frame' });
-                    }
-                } catch (error) {
-                    console.error('[Worker] Error adding frame:', error);
-                    self.postMessage({ type: 'error', error: 'Error adding frame: ' + error.message });
+            const frameStartTime = performance.now();
+            try {
+                const success = CppModule.worker_add_frame(
+                    frame.imageData,
+                    frame.width,
+                    frame.height
+                );
+                
+                const frameEndTime = performance.now();
+                const processingTime = frameEndTime - frameStartTime;
+                frameProcessingTimes.push(processingTime);
+                
+                // Keep only recent processing times for accurate metrics
+                if (frameProcessingTimes.length > 30) {
+                    frameProcessingTimes = frameProcessingTimes.slice(-30);
                 }
+                
+                if (success) {
+                    frameCount++;
+                    
+                    // Report progress every 15 frames for responsive UI
+                    if (frameCount % 15 === 0) {
+                        const avgProcessingTime = frameProcessingTimes.reduce((a, b) => a + b, 0) / frameProcessingTimes.length;
+                        const totalDuration = (performance.now() - recordingStartTime) / 1000;
+                        const actualFps = frameCount / totalDuration;
+                        
+                        self.postMessage({ 
+                            type: 'recordingProgress',
+                            frameCount: frameCount,
+                            metrics: {
+                                avgProcessingTime: avgProcessingTime,
+                                totalDuration: totalDuration,
+                                actualFps: actualFps,
+                                queueSize: frameQueue.length
+                            }
+                        });
+                    }
+                } else {
+                    console.error(`[Worker] Failed to add frame ${frameCount + 1}`);
+                    // Continue processing other frames instead of stopping
+                }
+            } catch (error) {
+                console.error(`[Worker] Error processing frame ${frameCount + 1}:`, error);
+                // Continue processing other frames
             }
             
-            // Small delay to prevent blocking
-            await new Promise(resolve => setTimeout(resolve, 0));
+            // NO delays - process continuously for 30fps
         }
     } finally {
         isProcessingFrames = false;
@@ -234,22 +226,12 @@ self.onmessage = async (event) => {
 
             case 'addFrame':
                 if (!CppModule || !CppModule.worker_add_frame || !recordingInProgress) {
-                    console.warn('[Worker] Ignoring frame - not ready or not recording', {
-                        hasModule: !!CppModule,
-                        hasAddFrame: !!(CppModule && CppModule.worker_add_frame),
-                        recordingInProgress
-                    });
+                    console.warn('[Worker] Ignoring frame - not ready or not recording');
                     return;
                 }
                 
                 if (!message.imageData || !message.width || !message.height) {
-                    console.error('[Worker] Invalid frame data:', { 
-                        hasImageData: !!message.imageData,
-                        imageDataLength: message.imageData ? message.imageData.length : 0,
-                        width: message.width,
-                        height: message.height,
-                        expectedLength: message.width * message.height * 4
-                    });
+                    console.error('[Worker] Invalid frame data');
                     return;
                 }
                 
@@ -258,34 +240,56 @@ self.onmessage = async (event) => {
                 if (message.imageData.length !== expectedLength) {
                     console.error('[Worker] Image data length mismatch:', {
                         received: message.imageData.length,
-                        expected: expectedLength,
-                        width: message.width,
-                        height: message.height
+                        expected: expectedLength
                     });
                     return;
                 }
                 
-                // Log first successful frame for debugging
-                if (frameCount === 0) {
-                    console.log('[Worker] Processing first frame:', {
+                // For 30fps performance: process frame immediately if possible, otherwise queue
+                if (!isProcessingFrames) {
+                    // Process immediately for better performance
+                    const frameStartTime = performance.now();
+                    try {
+                        const success = CppModule.worker_add_frame(
+                            message.imageData,
+                            message.width,
+                            message.height
+                        );
+                        
+                        const frameEndTime = performance.now();
+                        const processingTime = frameEndTime - frameStartTime;
+                        frameProcessingTimes.push(processingTime);
+                        
+                        if (frameProcessingTimes.length > 30) {
+                            frameProcessingTimes = frameProcessingTimes.slice(-30);
+                        }
+                        
+                        if (success) {
+                            frameCount++;
+                        } else {
+                            console.error('[Worker] Failed to add frame immediately');
+                        }
+                    } catch (error) {
+                        console.error('[Worker] Error adding frame immediately:', error);
+                    }
+                } else {
+                    // Queue only if currently processing (should be rare at 30fps)
+                    frameQueue.push({
+                        imageData: message.imageData,
                         width: message.width,
-                        height: message.height,
-                        dataLength: message.imageData.length,
-                        firstPixels: Array.from(message.imageData.slice(0, 16)).map(x => x.toString(16).padStart(2, '0')).join(' ')
+                        height: message.height
                     });
+                    
+                    // Prevent queue overflow for sustained 30fps
+                    if (frameQueue.length > 10) {
+                        // Drop oldest frames to maintain performance
+                        frameQueue.shift();
+                        console.warn('[Worker] Dropped frame to maintain 30fps performance');
+                    }
                 }
-
-                frameQueue.push({
-                    imageData: message.imageData,
-                    width: message.width,
-                    height: message.height
-                });
-
-                // Process frames if queue is getting large or immediately for mobile
-                const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent || '');
-                if (frameQueue.length >= (isMobile ? 1 : MAX_QUEUE_SIZE)) {
-                    processFrameQueue();
-                }
+                
+                // Always trigger queue processing to handle any backlog
+                processFrameQueue();
                 break;
 
             case 'stopRecording':
