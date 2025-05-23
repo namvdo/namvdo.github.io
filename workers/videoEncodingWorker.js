@@ -234,30 +234,56 @@ self.onmessage = async (event) => {
 
             case 'addFrame':
                 if (!CppModule || !CppModule.worker_add_frame || !recordingInProgress) {
-                    console.warn('[Worker] Ignoring frame - not ready or not recording');
+                    console.warn('[Worker] Ignoring frame - not ready or not recording', {
+                        hasModule: !!CppModule,
+                        hasAddFrame: !!(CppModule && CppModule.worker_add_frame),
+                        recordingInProgress
+                    });
                     return;
                 }
+                
                 if (!message.imageData || !message.width || !message.height) {
                     console.error('[Worker] Invalid frame data:', { 
                         hasImageData: !!message.imageData,
+                        imageDataLength: message.imageData ? message.imageData.length : 0,
+                        width: message.width,
+                        height: message.height,
+                        expectedLength: message.width * message.height * 4
+                    });
+                    return;
+                }
+                
+                // Validate image data length
+                const expectedLength = message.width * message.height * 4; // RGBA
+                if (message.imageData.length !== expectedLength) {
+                    console.error('[Worker] Image data length mismatch:', {
+                        received: message.imageData.length,
+                        expected: expectedLength,
                         width: message.width,
                         height: message.height
                     });
                     return;
                 }
-
-                // if (shouldDropFrame(frameQueue.length)) {
-                //     return; // Drop this frame
-                // }
                 
+                // Log first successful frame for debugging
+                if (frameCount === 0) {
+                    console.log('[Worker] Processing first frame:', {
+                        width: message.width,
+                        height: message.height,
+                        dataLength: message.imageData.length,
+                        firstPixels: Array.from(message.imageData.slice(0, 16)).map(x => x.toString(16).padStart(2, '0')).join(' ')
+                    });
+                }
+
                 frameQueue.push({
                     imageData: message.imageData,
                     width: message.width,
                     height: message.height
                 });
 
-                // Process frames if queue is getting large
-                if (frameQueue.length >= MAX_QUEUE_SIZE) {
+                // Process frames if queue is getting large or immediately for mobile
+                const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent || '');
+                if (frameQueue.length >= (isMobile ? 1 : MAX_QUEUE_SIZE)) {
                     processFrameQueue();
                 }
                 break;
