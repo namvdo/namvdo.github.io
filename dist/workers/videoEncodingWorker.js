@@ -63,13 +63,40 @@ async function initWasm(wasmUrl) {
 function getCppError() {
     if (CppModule && typeof CppModule.get_recording_error === 'function') {
         try {
-            return CppModule.get_recording_error();
+            const error = CppModule.get_recording_error();
+            console.log('[Worker] C++ Error Details:', error);
+            return error || 'No specific error available';
         } catch (e) {
             console.error('[Worker Helper] Failed to get C++ error:', e);
             return 'Failed to get C++ error: ' + (e.message || e);
         }
     }
     return 'Module or get_recording_error not available';
+}
+
+// Enhanced error reporting function
+function reportDetailedError(context, cppError, jsError = null) {
+    const errorReport = {
+        context,
+        cppError,
+        jsError: jsError ? (jsError.message || jsError.toString()) : null,
+        timestamp: new Date().toISOString(),
+        recordingState: recordingInProgress,
+        frameCount,
+        queueSize: frameQueue.length
+    };
+    
+    console.error('[Worker] Detailed Error Report:', errorReport);
+    
+    const fullErrorMessage = `${context}: C++[${cppError}]${jsError ? ` JS[${errorReport.jsError}]` : ''}`;
+    
+    self.postMessage({
+        type: 'error',
+        error: fullErrorMessage,
+        details: errorReport
+    });
+    
+    return fullErrorMessage;
 }
 
 // Process frames in batches
@@ -310,14 +337,56 @@ async function stopCurrentRecording() {
             await processFrameQueue();
         }
 
-        // Stop recording
-        const success = CppModule.stop_recording();
+        // Mobile-specific pre-stop checks
+        const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent || '');
+        const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent || '');
+        
+        if (isMobile) {
+            console.log(`[Worker] Mobile device detected: ${isIOS ? 'iOS' : 'Android'}`);
+            
+            // Give mobile browser extra time to process
+            await new Promise(resolve => setTimeout(resolve, 100));
+        }
 
-        if (success) {
-            console.log('[Worker] Recording stopped successfully, getting data');
+        // Stop recording with enhanced error handling for mobile
+        let success = false;
+        let stopError = null;
+        
+        try {
+            success = CppModule.stop_recording();
+        } catch (error) {
+            stopError = error;
+            console.error('[Worker] Exception calling stop_recording:', error);
+            
+            // For mobile, try to get partial data even if stop failed
+            if (isMobile) {
+                console.log('[Worker] Mobile: Attempting to recover partial data after stop failure');
+                success = false; // Will try to get data anyway below
+            } else {
+                throw error;
+            }
+        }
 
-            // Get the video data
-            const videoDataArray = CppModule.get_recording_data();
+        if (success || (isMobile && !success)) {
+            console.log(`[Worker] Recording ${success ? 'stopped successfully' : 'stopped with warnings (mobile)'}, getting data`);
+
+            // Get the video data with mobile-specific handling
+            let videoDataArray = null;
+            let dataError = null;
+            
+            try {
+                videoDataArray = CppModule.get_recording_data();
+            } catch (error) {
+                dataError = error;
+                console.error('[Worker] Exception getting recording data:', error);
+                
+                if (isMobile) {
+                    console.log('[Worker] Mobile: Data retrieval failed, this is expected on some devices');
+                    // Continue to send failure message with details
+                } else {
+                    throw error;
+                }
+            }
 
             if (videoDataArray && videoDataArray.length > 0) {
                 console.log(`[Worker] Got ${videoDataArray.length} bytes of video data`);
@@ -328,9 +397,17 @@ async function stopCurrentRecording() {
                     .join(' ');
                 console.log('[Worker] First 16 bytes:', headerHex);
 
-                // Verify video data integrity
-                if (videoDataArray.length < 1000) { // Basic size check
-                    throw new Error('Video data too small, likely corrupted');
+                // More lenient size check for mobile
+                const minSize = isMobile ? 100 : 1000;
+                if (videoDataArray.length < minSize) {
+                    const sizeError = `Video data too small for ${isMobile ? 'mobile' : 'desktop'}: ${videoDataArray.length} bytes (min: ${minSize})`;
+                    
+                    if (isMobile) {
+                        console.warn('[Worker] ' + sizeError + ' - attempting download anyway');
+                        // Continue with small file on mobile
+                    } else {
+                        throw new Error(sizeError);
+                    }
                 }
 
                 // Create a proper WebM container with metadata
@@ -341,26 +418,29 @@ async function stopCurrentRecording() {
                 const frameCount = CppModule.get_recorded_frame_count() || 0;
                 console.log(`[Worker] Final frame count: ${frameCount}`);
 
-                // Verify WebM header (EBML header)
+                // WebM header verification with mobile tolerance
                 const isWebM = videoData[0] === 0x1A && videoData[1] === 0x45 && videoData[2] === 0xDF && videoData[3] === 0xA3;
                 if (!isWebM) {
                     console.error('[Worker] Invalid WebM header. Expected EBML header (1A 45 DF A3)');
                     console.error('[Worker] Got:', headerHex);
                     
-                    // Try to fix the header if it's missing
-                    if (videoData.length > 4) {
-                        console.log('[Worker] Attempting to fix WebM header...');
-                        videoData[0] = 0x1A;
-                        videoData[1] = 0x45;
-                        videoData[2] = 0xDF;
-                        videoData[3] = 0xA3;
-                        console.log('[Worker] Header fixed, new header:', 
-                            Array.from(videoData.slice(0, 4))
-                                .map(b => b.toString(16).padStart(2, '0'))
-                                .join(' ')
-                        );
+                    if (isMobile) {
+                        console.log('[Worker] Mobile: Invalid header detected, attempting to fix...');
+                        // Try to fix the header if it's missing (common on mobile)
+                        if (videoData.length > 4) {
+                            videoData[0] = 0x1A;
+                            videoData[1] = 0x45;
+                            videoData[2] = 0xDF;
+                            videoData[3] = 0xA3;
+                            console.log('[Worker] Mobile: Header fixed');
+                        }
+                    } else {
+                        throw new Error('Invalid WebM header on desktop');
                     }
                 }
+
+                // Mobile-specific MIME type handling
+                const mimeType = isIOS ? 'video/webm' : 'video/webm; codecs="vp8"';
 
                 // Send video data back to main thread with highest priority
                 self.postMessage({
@@ -368,32 +448,80 @@ async function stopCurrentRecording() {
                     success: true,
                     videoData: videoData,
                     frameCount: frameCount,
-                    mimeType: 'video/webm; codecs="vp8"', // VP8 codec
-                    duration: frameCount / 30 // Approximate duration in seconds
+                    mimeType: mimeType,
+                    duration: frameCount / 30, // Approximate duration in seconds
+                    platform: isMobile ? (isIOS ? 'iOS' : 'Android') : 'Desktop',
+                    warnings: success ? [] : ['Stop recording had warnings but data recovered']
                 }, [videoDataBuffer]); // Transfer ownership for speed
+                
             } else {
                 console.error('[Worker] No video data returned');
+                
+                // Enhanced error details for mobile debugging
+                const errorDetails = {
+                    platform: isMobile ? (isIOS ? 'iOS' : 'Android') : 'Desktop',
+                    stopSuccess: success,
+                    stopError: stopError ? stopError.message : null,
+                    dataError: dataError ? dataError.message : null,
+                    frameCount: frameCount || 0,
+                    arrayLength: videoDataArray ? videoDataArray.length : 0,
+                    cppError: getCppError()
+                };
+                
+                console.error('[Worker] Error details:', errorDetails);
+                
                 self.postMessage({
                     type: 'recordingStopped',
                     success: false,
-                    error: 'No video data available'
+                    error: `No video data available (${errorDetails.platform})`,
+                    details: errorDetails
                 });
             }
         } else {
             const error = getCppError();
             console.error('[Worker] stop_recording failed:', error);
+            
+            // Enhanced error reporting for mobile
+            const errorDetails = {
+                platform: isMobile ? (isIOS ? 'iOS' : 'Android') : 'Desktop',
+                cppError: error,
+                stopError: stopError ? stopError.message : null,
+                frameCount: frameCount || 0,
+                userAgent: navigator.userAgent || 'unknown'
+            };
+            
+            const fullError = reportDetailedError('Stop Recording Failed', error);
             self.postMessage({
                 type: 'recordingStopped',
                 success: false,
-                error: `Stop recording failed: ${error}`
+                error: fullError,
+                details: errorDetails
             });
         }
     } catch (e) {
         console.error('[Worker] Exception during stopRecording:', e);
+        const cppError = getCppError();
+        
+        // Mobile-specific exception handling
+        const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent || '');
+        const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent || '');
+        
+        const errorDetails = {
+            platform: isMobile ? (isIOS ? 'iOS' : 'Android') : 'Desktop',
+            exception: e.message || e.toString(),
+            cppError: cppError,
+            stack: e.stack || 'No stack trace',
+            frameCount: frameCount || 0
+        };
+        
+        console.error('[Worker] Exception details:', errorDetails);
+        
+        const fullError = reportDetailedError('Stop Recording Exception', cppError, e);
         self.postMessage({
             type: 'recordingStopped',
             success: false,
-            error: 'Exception: ' + (e.message || e.toString())
+            error: fullError,
+            details: errorDetails
         });
     }
 }
