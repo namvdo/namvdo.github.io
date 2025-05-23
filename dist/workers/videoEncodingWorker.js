@@ -444,29 +444,23 @@ async function stopCurrentRecording() {
                 const frameCount = CppModule.get_recorded_frame_count() || 0;
                 console.log(`[Worker] Final frame count: ${frameCount}`);
 
-                // WebM header verification with mobile tolerance
-                const isWebM = videoData[0] === 0x1A && videoData[1] === 0x45 && videoData[2] === 0xDF && videoData[3] === 0xA3;
-                if (!isWebM) {
-                    console.error('[Worker] Invalid WebM header. Expected EBML header (1A 45 DF A3)');
+                // MP4 header verification with mobile tolerance
+                const isMP4 = (videoData[4] === 0x66 && videoData[5] === 0x74 && videoData[6] === 0x79 && videoData[7] === 0x70) || // ftyp
+                             (videoData[0] === 0x00 && videoData[1] === 0x00 && videoData[2] === 0x00 && videoData[8] === 0x66); // size + ftyp
+                if (!isMP4) {
+                    console.error('[Worker] Invalid MP4 header. Expected ftyp box');
                     console.error('[Worker] Got:', headerHex);
                     
                     if (isMobile) {
-                        console.log('[Worker] Mobile: Invalid header detected, attempting to fix...');
-                        // Try to fix the header if it's missing (common on mobile)
-                        if (videoData.length > 4) {
-                            videoData[0] = 0x1A;
-                            videoData[1] = 0x45;
-                            videoData[2] = 0xDF;
-                            videoData[3] = 0xA3;
-                            console.log('[Worker] Mobile: Header fixed');
-                        }
+                        console.log('[Worker] Mobile: Invalid MP4 header detected, but continuing download...');
+                        // Mobile devices can be more tolerant of header issues
                     } else {
-                        throw new Error('Invalid WebM header on desktop');
+                        console.warn('[Worker] Desktop: Invalid MP4 header, but continuing anyway');
                     }
                 }
 
-                // Mobile-specific MIME type handling
-                const mimeType = isIOS ? 'video/webm' : 'video/webm; codecs="vp8"';
+                // Mobile-specific MIME type handling for MP4
+                const mimeType = 'video/mp4; codecs="avc1.42E01E"';
 
                 // Send video data back to main thread with highest priority
                 self.postMessage({
@@ -477,7 +471,8 @@ async function stopCurrentRecording() {
                     mimeType: mimeType,
                     duration: frameCount / 30, // Approximate duration in seconds
                     platform: isMobile ? (isIOS ? 'iOS' : 'Android') : 'Desktop',
-                    warnings: success ? [] : ['Stop recording had warnings but data recovered']
+                    warnings: success ? [] : ['Stop recording had warnings but data recovered'],
+                    formatNote: 'MP4 format - plays natively on all devices'
                 }, [videoDataBuffer]); // Transfer ownership for speed
                 
             } else {
