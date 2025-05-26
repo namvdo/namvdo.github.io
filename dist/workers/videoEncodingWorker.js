@@ -11,38 +11,49 @@ let recordingStartTime = null;
 let lastFrameTime = null;
 let frameProcessingTimes = [];
 
+// Mobile logging helper for worker
+const mobileLog = (message, data = null) => {
+    const timestamp = new Date().toISOString().slice(11, 23);
+    const logMessage = `[${timestamp}] [Worker] ${message}`;
+    console.log(logMessage, data || '');
+};
+
 // Initialize WASM module
 async function initWasm(wasmUrl) {
-    console.log('[Worker] Initializing with WASM URL:', wasmUrl);
+    mobileLog('Initializing with WASM URL:', wasmUrl);
     if (!wasmUrl) {
         throw new Error('WASM URL not provided');
     }
 
-    const moduleFactory = await import(wasmUrl);
-    console.log('[Worker] Module factory loaded.');
-
-    // Configure module without threading and with imported memory
-    const moduleConfig = {
-        print: (text) => console.log('[WASM Print]', text),
-        printErr: (text) => console.error('[WASM Error]', text),
-        locateFile: (path) => {
-            console.log('[Worker] Locating file:', path);
-            return wasmUrl.replace('lux.js', path);
-        },
-        // Use imported memory configuration
-        importMemory: true
-    };
-
     try {
+        mobileLog('Attempting to import module factory...');
+        const moduleFactory = await import(wasmUrl);
+        mobileLog('Module factory loaded successfully');
+
+        // Configure module without threading and with imported memory
+        const moduleConfig = {
+            print: (text) => mobileLog('[WASM Print]', text),
+            printErr: (text) => mobileLog('[WASM Error]', text),
+            locateFile: (path) => {
+                mobileLog('Locating file:', path);
+                return wasmUrl.replace('lux.js', path);
+            },
+            // Use imported memory configuration
+            importMemory: true
+        };
+
+        mobileLog('Creating module instance with config...');
         CppModule = await moduleFactory.default(moduleConfig);
-        console.log('[Worker] Module instance created.');
+        mobileLog('Module instance created successfully');
     } catch (error) {
-        console.error('[Worker] Failed to initialize module:', error);
+        mobileLog('CRITICAL ERROR - Failed to initialize module:', error.message);
+        mobileLog('Error stack:', error.stack);
         throw new Error(`Module initialization failed: ${error.message}`);
     }
 
     const exportedFunctions = Object.keys(CppModule).filter(key => typeof CppModule[key] === 'function');
-    console.log('[Worker] Module exports:', exportedFunctions);
+    mobileLog('Module exports count:', exportedFunctions.length);
+    mobileLog('First 10 exports:', exportedFunctions.slice(0, 10));
 
     // Verify critical recording functions exist
     const requiredFunctions = [
@@ -53,9 +64,9 @@ async function initWasm(wasmUrl) {
     const missingFunctions = requiredFunctions.filter(fnName => !(CppModule && typeof CppModule[fnName] === 'function'));
 
     if (missingFunctions.length === 0) {
-        console.log('[Worker] Critical recording functions verified.');
+        mobileLog('✓ All critical recording functions verified');
     } else {
-        console.error(`[Worker] Missing required recording functions: [${missingFunctions.join(', ')}]`);
+        mobileLog(`ERROR - Missing required recording functions: [${missingFunctions.join(', ')}]`);
         throw new Error(`Module recording functions missing: ${missingFunctions.join(', ')}`);
     }
 }
@@ -214,39 +225,40 @@ async function processFrameQueue() {
 
 self.onmessage = async (event) => {
     const message = event.data;
-    console.log('[Worker] Received message:', message.type);
+    mobileLog('Received message:', message.type);
 
     try {
         switch (message.type) {
             case 'init':
                 if (isInitialized) {
-                    console.log('[Worker] Already initialized');
+                    mobileLog('Already initialized');
                     return;
                 }
 
-                console.log('[Worker] Initializing...');
+                mobileLog('Initializing worker...');
                 await initWasm(message.wasmUrl);
                 isInitialized = true;
+                mobileLog('✓ Worker initialization complete');
                 self.postMessage({ type: 'initialized' });
                 break;
 
             case 'startRecording':
-                console.log('[Worker] === START RECORDING REQUEST ===');
-                console.log('[Worker] isInitialized:', isInitialized);
-                console.log('[Worker] recordingInProgress:', recordingInProgress);
+                mobileLog('=== START RECORDING REQUEST ===');
+                mobileLog('isInitialized:', isInitialized);
+                mobileLog('recordingInProgress:', recordingInProgress);
                 
                 if (!isInitialized) {
-                    console.error('[Worker] ERROR: Worker not initialized');
+                    mobileLog('ERROR: Worker not initialized');
                     throw new Error('Worker not initialized');
                 }
 
                 if (recordingInProgress) {
-                    console.log('[Worker] Already recording, stopping first');
+                    mobileLog('Already recording, stopping first');
                     await stopCurrentRecording();
                 }
 
-                console.log('[Worker] Starting H.264/MP4 recording with options:', message.options);
-                console.log('[Worker] Original options dimensions:', message.options.width, 'x', message.options.height);
+                mobileLog('Starting H.264/MP4 recording with options:', message.options);
+                mobileLog('Original options dimensions:', message.options.width, 'x', message.options.height);
                 
                 recordingInProgress = true;
                 frameCount = 0;
@@ -255,18 +267,18 @@ self.onmessage = async (event) => {
 
                 // ADAPTIVE DIMENSIONS: Use actual canvas dimensions for recording
                 // This ensures compatibility with different image sizes and mobile devices
-                console.log('[Worker] Using adaptive canvas dimensions for recording...');
+                mobileLog('Using adaptive canvas dimensions for recording...');
                 let recordingWidth = message.options.width;
                 let recordingHeight = message.options.height;
                 
                 // MOBILE COMPATIBILITY: Ensure dimensions are even numbers (required for H.264)
                 if (recordingWidth % 2 !== 0) {
                     recordingWidth = recordingWidth - 1;
-                    console.log(`[Worker] Adjusted width to even number: ${recordingWidth}`);
+                    mobileLog(`Adjusted width to even number: ${recordingWidth}`);
                 }
                 if (recordingHeight % 2 !== 0) {
                     recordingHeight = recordingHeight - 1;
-                    console.log(`[Worker] Adjusted height to even number: ${recordingHeight}`);
+                    mobileLog(`Adjusted height to even number: ${recordingHeight}`);
                 }
                 
                 // MOBILE COMPATIBILITY: Validate dimension limits for mobile devices
@@ -274,32 +286,32 @@ self.onmessage = async (event) => {
                 const minDimension = 16; // Minimum for H.264
                 
                 if (recordingWidth > maxMobileDimension || recordingHeight > maxMobileDimension) {
-                    console.warn(`[Worker] WARNING: Large dimensions (${recordingWidth}x${recordingHeight}) may cause issues on mobile devices`);
+                    mobileLog(`WARNING: Large dimensions (${recordingWidth}x${recordingHeight}) may cause issues on mobile devices`);
                 }
                 
                 if (recordingWidth < minDimension || recordingHeight < minDimension) {
-                    console.error(`[Worker] ERROR: Dimensions too small (${recordingWidth}x${recordingHeight}), minimum is ${minDimension}x${minDimension}`);
+                    mobileLog(`ERROR: Dimensions too small (${recordingWidth}x${recordingHeight}), minimum is ${minDimension}x${minDimension}`);
                     recordingInProgress = false;
                     self.postMessage({ type: 'recordingStarted', success: false, error: 'Dimensions too small for H.264 encoding' });
                     return;
                 }
                 
-                console.log(`[Worker] Final recording dimensions: ${recordingWidth}x${recordingHeight}`);
-                console.log(`[Worker] Original canvas dimensions: ${message.options.width}x${message.options.height}`);
+                mobileLog(`Final recording dimensions: ${recordingWidth}x${recordingHeight}`);
+                mobileLog(`Original canvas dimensions: ${message.options.width}x${message.options.height}`);
                 
                 // Get buffer dimensions for comparison only (not for recording)
                 const bufferWidth = CppModule.get_buf_width();
                 const bufferHeight = CppModule.get_buf_height();
-                console.log(`[Worker] Buffer dimensions (for reference): ${bufferWidth}x${bufferHeight}`);
+                mobileLog(`Buffer dimensions (for reference): ${bufferWidth}x${bufferHeight}`);
 
-                console.log('[Worker] Calling C++ start_recording with CANVAS dimensions:');
-                console.log('[Worker] - Width:', recordingWidth);
-                console.log('[Worker] - Height:', recordingHeight);
-                console.log('[Worker] - FPS:', message.options.fps);
-                console.log('[Worker] - Bitrate:', message.options.bitrate);
-                console.log('[Worker] - Codec:', message.options.codec);
-                console.log('[Worker] - Format:', message.options.format);
-                console.log('[Worker] - Preset:', message.options.preset);
+                mobileLog('Calling C++ start_recording with CANVAS dimensions:');
+                mobileLog('- Width:', recordingWidth);
+                mobileLog('- Height:', recordingHeight);
+                mobileLog('- FPS:', message.options.fps);
+                mobileLog('- Bitrate:', message.options.bitrate);
+                mobileLog('- Codec:', message.options.codec);
+                mobileLog('- Format:', message.options.format);
+                mobileLog('- Preset:', message.options.preset);
 
                 const success = await CppModule.start_recording(
                     recordingWidth,  // Use canvas width (adaptive)
@@ -311,25 +323,25 @@ self.onmessage = async (event) => {
                     message.options.preset
                 );
 
-                console.log('[Worker] start_recording returned:', success);
+                mobileLog('start_recording returned:', success);
                 
                 if (success) {
-                    console.log('[Worker] ✓ Recording started successfully');
+                    mobileLog('✓ Recording started successfully');
                     // Verify recording state
                     if (typeof CppModule.get_recording_state === 'function') {
                         const state = CppModule.get_recording_state();
-                        console.log('[Worker] C++ recording state after start:', state);
+                        mobileLog('C++ recording state after start:', state);
                     }
                     if (typeof CppModule.is_recording === 'function') {
                         const isRec = CppModule.is_recording();
-                        console.log('[Worker] C++ is_recording after start:', isRec);
+                        mobileLog('C++ is_recording after start:', isRec);
                     }
                     self.postMessage({ type: 'recordingStarted', success: true });
                 } else {
-                    console.error('[Worker] ✗ Failed to start H.264 recording');
+                    mobileLog('✗ Failed to start H.264 recording');
                     if (typeof CppModule.get_recording_error === 'function') {
                         const error = CppModule.get_recording_error();
-                        console.error('[Worker] C++ error:', error);
+                        mobileLog('C++ error:', error);
                     }
                     recordingInProgress = false;
                     self.postMessage({ type: 'recordingStarted', success: false, error: 'Failed to start H.264 recording' });
@@ -337,29 +349,29 @@ self.onmessage = async (event) => {
                 break;
 
             case 'addFrame':
-                console.log('[Worker] === ADD FRAME REQUEST ===');
-                console.log('[Worker] CppModule available:', !!CppModule);
-                console.log('[Worker] worker_add_frame available:', !!(CppModule && CppModule.worker_add_frame));
-                console.log('[Worker] recordingInProgress:', recordingInProgress);
+                mobileLog('=== ADD FRAME REQUEST ===');
+                mobileLog('CppModule available:', !!CppModule);
+                mobileLog('worker_add_frame available:', !!(CppModule && CppModule.worker_add_frame));
+                mobileLog('recordingInProgress:', recordingInProgress);
                 
                 if (!CppModule || !CppModule.worker_add_frame || !recordingInProgress) {
-                    console.warn('[Worker] Ignoring frame - not ready or not recording');
-                    console.warn('[Worker] - CppModule:', !!CppModule);
-                    console.warn('[Worker] - worker_add_frame:', !!(CppModule && CppModule.worker_add_frame));
-                    console.warn('[Worker] - recordingInProgress:', recordingInProgress);
+                    mobileLog('Ignoring frame - not ready or not recording');
+                    mobileLog('- CppModule:', !!CppModule);
+                    mobileLog('- worker_add_frame:', !!(CppModule && CppModule.worker_add_frame));
+                    mobileLog('- recordingInProgress:', recordingInProgress);
                     return;
                 }
                 
-                console.log('[Worker] Frame data validation:');
-                console.log('[Worker] - hasImageData:', !!message.imageData);
-                console.log('[Worker] - width:', message.width);
-                console.log('[Worker] - height:', message.height);
-                console.log('[Worker] - imageData type:', message.imageData ? message.imageData.constructor.name : 'null');
-                console.log('[Worker] - imageData length:', message.imageData ? message.imageData.length : 0);
-                console.log('[Worker] - expected length:', message.width * message.height * 4);
+                mobileLog('Frame data validation:');
+                mobileLog('- hasImageData:', !!message.imageData);
+                mobileLog('- width:', message.width);
+                mobileLog('- height:', message.height);
+                mobileLog('- imageData type:', message.imageData ? message.imageData.constructor.name : 'null');
+                mobileLog('- imageData length:', message.imageData ? message.imageData.length : 0);
+                mobileLog('- expected length:', message.width * message.height * 4);
                 
                 if (!message.imageData || !message.width || !message.height) {
-                    console.error('[Worker] Invalid frame data:', { 
+                    mobileLog('Invalid frame data:', { 
                         hasImageData: !!message.imageData,
                         width: message.width,
                         height: message.height
@@ -370,43 +382,39 @@ self.onmessage = async (event) => {
                 // Check current recording state
                 if (typeof CppModule.get_recording_state === 'function') {
                     const currentState = CppModule.get_recording_state();
-                    console.log('[Worker] Current C++ recording state:', currentState);
+                    mobileLog('Current C++ recording state:', currentState);
                 }
                 
                 if (typeof CppModule.is_recording === 'function') {
                     const isCppRecording = CppModule.is_recording();
-                    console.log('[Worker] C++ is_recording:', isCppRecording);
+                    mobileLog('C++ is_recording:', isCppRecording);
                 }
 
-                // if (shouldDropFrame(frameQueue.length)) {
-                //     return; // Drop this frame
-                // }
-                
-                console.log('[Worker] Adding frame to queue. Current queue size:', frameQueue.length);
+                mobileLog('Adding frame to queue. Current queue size:', frameQueue.length);
                 frameQueue.push({
                     imageData: message.imageData,
                     width: message.width,
                     height: message.height
                 });
-                console.log('[Worker] Frame added to queue. New queue size:', frameQueue.length);
+                mobileLog('Frame added to queue. New queue size:', frameQueue.length);
 
                 // Process frames if queue is getting large
                 if (frameQueue.length >= MAX_QUEUE_SIZE) {
-                    console.log('[Worker] Queue size reached MAX_QUEUE_SIZE, processing frames');
+                    mobileLog('Queue size reached MAX_QUEUE_SIZE, processing frames');
                     processFrameQueue();
                 }
                 break;
 
             case 'stopRecording':
                 if (!recordingInProgress) {
-                    console.log('[Worker] Not recording');
+                    mobileLog('Not recording');
                     return;
                 }
 
                 const stopTime = performance.now();
                 const totalRecordingDuration = (stopTime - recordingStartTime) / 1000;
-                console.log(`[Worker] Recording stopped after ${totalRecordingDuration.toFixed(2)}s with ${frameCount} frames`);
-                console.log(`[Worker] Average FPS: ${(frameCount / totalRecordingDuration).toFixed(2)}`);
+                mobileLog(`Recording stopped after ${totalRecordingDuration.toFixed(2)}s with ${frameCount} frames`);
+                mobileLog(`Average FPS: ${(frameCount / totalRecordingDuration).toFixed(2)}`);
 
                 recordingInProgress = false;
                 
@@ -446,16 +454,17 @@ self.onmessage = async (event) => {
                         isWorkerRecording: recordingInProgress
                     });
                 } catch (e) {
-                    console.error('[Worker] Exception during getState:', e);
+                    mobileLog('Exception during getState:', e.message);
                     self.postMessage({ type: 'recorderState', state: 'error_getting_state', frameCount: 0, queueSize: 0 });
                 }
                 break;
 
             default:
-                console.warn('[Worker] Unknown message type:', message.type);
+                mobileLog('Unknown message type:', message.type);
         }
     } catch (error) {
-        console.error('[Worker] Error:', error);
+        mobileLog('CRITICAL ERROR in message handler:', error.message);
+        mobileLog('Error stack:', error.stack);
         self.postMessage({ type: 'error', error: error.message });
     }
 };
@@ -463,12 +472,12 @@ self.onmessage = async (event) => {
 // Helper function to stop recording
 async function stopCurrentRecording() {
     try {
-        console.log('[Worker] Stopping recording and finalizing...');
+        mobileLog('Stopping recording and finalizing...');
         recordingInProgress = false;
 
         // Process any remaining frames in queue
         if (frameQueue.length > 0) {
-            console.log(`[Worker] Processing ${frameQueue.length} remaining frames before stopping`);
+            mobileLog(`Processing ${frameQueue.length} remaining frames before stopping`);
             await processFrameQueue();
         }
 
@@ -476,19 +485,19 @@ async function stopCurrentRecording() {
         const success = CppModule.stop_recording();
 
         if (success) {
-            console.log('[Worker] Recording stopped successfully, getting data');
+            mobileLog('Recording stopped successfully, getting data');
 
             // Get the video data
             const videoDataArray = CppModule.get_recording_data();
 
             if (videoDataArray && videoDataArray.length > 0) {
-                console.log(`[Worker] Got ${videoDataArray.length} bytes of video data`);
+                mobileLog(`Got ${videoDataArray.length} bytes of video data`);
 
                 // Debug: Print first 16 bytes in hex
                 const headerHex = Array.from(videoDataArray.slice(0, 16))
                     .map(b => b.toString(16).padStart(2, '0'))
                     .join(' ');
-                console.log('[Worker] First 16 bytes:', headerHex);
+                mobileLog('First 16 bytes:', headerHex);
 
                 // Verify video data integrity
                 if (videoDataArray.length < 1000) { // Basic size check
@@ -501,13 +510,13 @@ async function stopCurrentRecording() {
                 videoData.set(videoDataArray);
 
                 const frameCount = CppModule.get_recorded_frame_count() || 0;
-                console.log(`[Worker] Final frame count: ${frameCount}`);
+                mobileLog(`Final frame count: ${frameCount}`);
 
                 // Verify MP4 header (ftyp box)
                 const isMP4 = videoData[4] === 0x66 && videoData[5] === 0x74 && videoData[6] === 0x79 && videoData[7] === 0x70;
                 if (!isMP4) {
-                    console.warn('[Worker] Warning: MP4 header not detected. Expected ftyp box (66 74 79 70)');
-                    console.warn('[Worker] Got:', headerHex);
+                    mobileLog('Warning: MP4 header not detected. Expected ftyp box (66 74 79 70)');
+                    mobileLog('Got:', headerHex);
                     // Don't fail - FFmpeg might use different container structure
                 }
 
@@ -521,7 +530,7 @@ async function stopCurrentRecording() {
                     duration: frameCount / 30 // Approximate duration in seconds
                 }, [videoDataBuffer]); // Transfer ownership for speed
             } else {
-                console.error('[Worker] No video data returned');
+                mobileLog('No video data returned');
                 self.postMessage({
                     type: 'recordingStopped',
                     success: false,
@@ -530,7 +539,7 @@ async function stopCurrentRecording() {
             }
         } else {
             const error = getCppError();
-            console.error('[Worker] stop_recording failed:', error);
+            mobileLog('stop_recording failed:', error);
             self.postMessage({
                 type: 'recordingStopped',
                 success: false,
@@ -538,7 +547,7 @@ async function stopCurrentRecording() {
             });
         }
     } catch (e) {
-        console.error('[Worker] Exception during stopRecording:', e);
+        mobileLog('Exception during stopRecording:', e);
         self.postMessage({
             type: 'recordingStopped',
             success: false,
@@ -549,25 +558,25 @@ async function stopCurrentRecording() {
 
 // Global error handlers
 self.addEventListener('error', (event) => {
-    console.error('[Worker Global Error]:', event.message, event.filename, event.lineno);
+    mobileLog('CRITICAL ERROR in global error handler:', event.message, event.filename, event.lineno);
     if (self.postMessage) {
         try {
             self.postMessage({ type: 'error', error: 'Worker error: ' + event.message });
         } catch (e) {
-            console.error("[Worker Global Error] Could not send error message", e);
+            mobileLog('CRITICAL ERROR: Could not send error message');
         }
     }
 });
 
 self.addEventListener('unhandledrejection', (event) => {
-    console.error('[Worker Global Error] Unhandled Promise Rejection:', event.reason);
+    mobileLog('CRITICAL ERROR in global error handler:', event.reason);
     if (self.postMessage) {
         try {
             self.postMessage({ type: 'error', error: 'Worker promise rejection: ' + (event.reason.message || event.reason.toString()) });
         } catch (e) {
-            console.error("[Worker Global Error] Could not send rejection message", e);
+            mobileLog('CRITICAL ERROR: Could not send rejection message');
         }
     }
 });
 
-console.log('[Worker] H.264/MP4 video encoding worker initialized');
+mobileLog('H.264/MP4 video encoding worker initialized');
