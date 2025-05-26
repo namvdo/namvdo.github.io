@@ -100,7 +100,8 @@ async function processFrameQueue() {
     console.log('[Worker] Starting frame processing with batch size:', batchSize);
 
     try {
-        while (frameQueue.length > 0 && recordingInProgress) {
+        // Process frames while we have them and recording is still active (or we're in final processing)
+        while (frameQueue.length > 0) {
             const batch = frameQueue.splice(0, batchSize);
             console.log('[Worker] Processing batch of', batch.length, 'frames. Remaining in queue:', frameQueue.length);
             
@@ -142,7 +143,7 @@ async function processFrameQueue() {
                     const frameEndTime = performance.now();
                     const processingTime = frameEndTime - frameStartTime;
                     frameProcessingTimes.push(processingTime);
-                    
+        
                     if (success) {
                         frameCount++;
                         console.log(`[Worker] ✓ Frame ${frameCount} added successfully in ${processingTime.toFixed(2)}ms`);
@@ -160,7 +161,7 @@ async function processFrameQueue() {
                                 Actual FPS: ${actualFps.toFixed(2)}
                                 Target FPS: 30`);
                             
-                            self.postMessage({ 
+                            self.postMessage({
                                 type: 'recordingProgress',
                                 frameCount: frameCount,
                                 metrics: {
@@ -257,13 +258,25 @@ self.onmessage = async (event) => {
                     await stopCurrentRecording();
                 }
 
+                // CLEAN STATE: Reset all recording-related variables for fresh start
+                mobileLog('Resetting recording state for fresh start...');
+                frameCount = 0;
+                frameQueue = []; // Clear any leftover frames from previous recording
+                isProcessingFrames = false;
+                recordingStartTime = performance.now();
+                lastFrameTime = null;
+                frameProcessingTimes = [];
+                
+                mobileLog('Recording state reset complete:', {
+                    frameCount: frameCount,
+                    queueLength: frameQueue.length,
+                    isProcessingFrames: isProcessingFrames
+                });
+
                 mobileLog('Starting H.264/MP4 recording with options:', message.options);
                 mobileLog('Original options dimensions:', message.options.width, 'x', message.options.height);
                 
                 recordingInProgress = true;
-                frameCount = 0;
-                recordingStartTime = performance.now();
-                frameProcessingTimes = [];
 
                 // ADAPTIVE DIMENSIONS: Use actual canvas dimensions for recording
                 // This ensures compatibility with different image sizes and mobile devices
@@ -354,11 +367,16 @@ self.onmessage = async (event) => {
                 mobileLog('worker_add_frame available:', !!(CppModule && CppModule.worker_add_frame));
                 mobileLog('recordingInProgress:', recordingInProgress);
                 
-                if (!CppModule || !CppModule.worker_add_frame || !recordingInProgress) {
-                    mobileLog('Ignoring frame - not ready or not recording');
+                // SAFETY CHECK: Don't accept frames if recording is not active
+                if (!recordingInProgress) {
+                    mobileLog('Rejecting frame - recording not in progress');
+                    return;
+                }
+                
+                if (!CppModule || !CppModule.worker_add_frame) {
+                    mobileLog('Ignoring frame - module not ready');
                     mobileLog('- CppModule:', !!CppModule);
                     mobileLog('- worker_add_frame:', !!(CppModule && CppModule.worker_add_frame));
-                    mobileLog('- recordingInProgress:', recordingInProgress);
                     return;
                 }
                 
@@ -388,6 +406,12 @@ self.onmessage = async (event) => {
                 if (typeof CppModule.is_recording === 'function') {
                     const isCppRecording = CppModule.is_recording();
                     mobileLog('C++ is_recording:', isCppRecording);
+                    
+                    // ADDITIONAL SAFETY: If C++ says it's not recording, don't queue the frame
+                    if (!isCppRecording) {
+                        mobileLog('Rejecting frame - C++ not recording');
+                        return;
+                    }
                 }
 
                 mobileLog('Adding frame to queue. Current queue size:', frameQueue.length);
@@ -416,11 +440,20 @@ self.onmessage = async (event) => {
                 mobileLog(`Recording stopped after ${totalRecordingDuration.toFixed(2)}s with ${frameCount} frames`);
                 mobileLog(`Average FPS: ${(frameCount / totalRecordingDuration).toFixed(2)}`);
 
+                // Immediately stop accepting new frames
                 recordingInProgress = false;
                 
-                // Process any remaining frames
-                if (frameQueue.length > 0) {
-                    await processFrameQueue();
+                // Handle queue flushing based on message flag
+                if (message.flushQueue) {
+                    mobileLog(`Flushing ${frameQueue.length} remaining frames from queue (will not be processed)`);
+                    frameQueue = []; // Clear the queue - these frames won't be processed
+                    mobileLog('Frame queue flushed - starting clean for next recording');
+                } else {
+                    // Process any remaining frames that were already queued
+                    if (frameQueue.length > 0) {
+                        mobileLog(`Processing ${frameQueue.length} remaining frames before stopping`);
+                        await processFrameQueue();
+                    }
                 }
                 
                 const result = await stopCurrentRecording();
@@ -473,15 +506,20 @@ self.onmessage = async (event) => {
 async function stopCurrentRecording() {
     try {
         mobileLog('Stopping recording and finalizing...');
+        
+        // Ensure recording is stopped
         recordingInProgress = false;
+        
+        // Ensure frame processing is stopped
+        isProcessingFrames = false;
 
-        // Process any remaining frames in queue
+        // Process any remaining frames in queue (only if not already flushed)
         if (frameQueue.length > 0) {
             mobileLog(`Processing ${frameQueue.length} remaining frames before stopping`);
             await processFrameQueue();
         }
 
-        // Stop recording
+        // Stop recording in C++
         const success = CppModule.stop_recording();
 
         if (success) {
@@ -509,8 +547,8 @@ async function stopCurrentRecording() {
                 const videoData = new Uint8Array(videoDataBuffer);
                 videoData.set(videoDataArray);
 
-                const frameCount = CppModule.get_recorded_frame_count() || 0;
-                mobileLog(`Final frame count: ${frameCount}`);
+                const finalFrameCount = CppModule.get_recorded_frame_count() || 0;
+                mobileLog(`Final frame count: ${finalFrameCount}`);
 
                 // Verify MP4 header (ftyp box)
                 const isMP4 = videoData[4] === 0x66 && videoData[5] === 0x74 && videoData[6] === 0x79 && videoData[7] === 0x70;
@@ -520,14 +558,29 @@ async function stopCurrentRecording() {
                     // Don't fail - FFmpeg might use different container structure
                 }
 
+                // CLEAN STATE: Reset all variables for next recording
+                mobileLog('Cleaning up state for next recording...');
+                frameQueue = []; // Ensure queue is empty
+                isProcessingFrames = false;
+                frameCount = 0; // Reset frame count for next recording
+                recordingStartTime = null;
+                lastFrameTime = null;
+                frameProcessingTimes = [];
+                
+                mobileLog('State cleanup complete:', {
+                    frameQueue: frameQueue.length,
+                    isProcessingFrames: isProcessingFrames,
+                    frameCount: frameCount
+                });
+
                 // Send video data back to main thread with highest priority
                 self.postMessage({
                     type: 'recordingStopped',
                     success: true,
                     videoData: videoData,
-                    frameCount: frameCount,
+                    frameCount: finalFrameCount, // Use the final count from C++
                     mimeType: 'video/mp4; codecs="avc1.42E01E"', // H.264 baseline profile
-                    duration: frameCount / 30 // Approximate duration in seconds
+                    duration: finalFrameCount / 30 // Approximate duration in seconds
                 }, [videoDataBuffer]); // Transfer ownership for speed
             } else {
                 mobileLog('No video data returned');
@@ -553,6 +606,18 @@ async function stopCurrentRecording() {
             success: false,
             error: 'Exception: ' + (e.message || e.toString())
         });
+    } finally {
+        // FINAL CLEANUP: Ensure state is completely reset regardless of success/failure
+        mobileLog('Final cleanup - ensuring clean state...');
+        recordingInProgress = false;
+        isProcessingFrames = false;
+        frameQueue = [];
+        frameCount = 0;
+        recordingStartTime = null;
+        lastFrameTime = null;
+        frameProcessingTimes = [];
+        
+        mobileLog('Final cleanup complete - ready for next recording');
     }
 }
 
