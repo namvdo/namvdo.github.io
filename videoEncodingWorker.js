@@ -25,10 +25,24 @@ self.onmessage = async (event) => {
         case 'init':
             try {
                 console.log('[Worker] Initializing with WASM module');
-                // The module is passed directly as a factory function
-                module = await self.Module();
+                const wasmUrl = message.wasmUrl || '/lux.js';
+                console.log('[Worker] Loading WASM from:', wasmUrl);
                 
-                console.log('[Worker] Module instance created');
+                // Import the WASM module using dynamic import for ES modules
+                const wasmModule = await import(wasmUrl);
+                console.log('[Worker] WASM module imported:', !!wasmModule);
+                
+                // The module should be the default export
+                const ModuleFactory = wasmModule.default || wasmModule.Module || wasmModule;
+                console.log('[Worker] Module factory found:', typeof ModuleFactory);
+                
+                if (typeof ModuleFactory === 'function') {
+                    // Initialize the module
+                    module = await ModuleFactory();
+                    console.log('[Worker] Module instance created successfully');
+                } else {
+                    throw new Error('Invalid module factory from ' + wasmUrl + ', got: ' + typeof ModuleFactory);
+                }
                 
                 // Verify critical recording functions exist
                 const requiredFunctions = [
