@@ -28,20 +28,18 @@ self.onmessage = async (event) => {
                 const wasmUrl = message.wasmUrl || '/lux.js';
                 console.log('[Worker] Loading WASM from:', wasmUrl);
                 
-                // Import the WASM module using dynamic import for ES modules
-                const wasmModule = await import(wasmUrl);
-                console.log('[Worker] WASM module imported:', !!wasmModule);
+                // Load the WASM module using importScripts (for traditional JS files)
+                importScripts(wasmUrl);
+                console.log('[Worker] WASM script imported');
                 
-                // The module should be the default export
-                const ModuleFactory = wasmModule.default || wasmModule.Module || wasmModule;
-                console.log('[Worker] Module factory found:', typeof ModuleFactory);
-                
-                if (typeof ModuleFactory === 'function') {
+                // The lux.js file creates a global Module variable
+                if (typeof self.Module === 'function') {
+                    console.log('[Worker] Module factory found, initializing...');
                     // Initialize the module
-                    module = await ModuleFactory();
+                    module = await self.Module();
                     console.log('[Worker] Module instance created successfully');
                 } else {
-                    throw new Error('Invalid module factory from ' + wasmUrl + ', got: ' + typeof ModuleFactory);
+                    throw new Error('Module function not available after importing ' + wasmUrl + ', found: ' + typeof self.Module);
                 }
                 
                 // Verify critical recording functions exist
