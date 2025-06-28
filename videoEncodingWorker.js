@@ -29,6 +29,11 @@ self.onmessage = async (event) => {
                 console.log('[Worker] Loading WASM from:', wasmUrl);
                 
                 // Load the WASM module using importScripts (for traditional JS files)
+                // First, provide a fallback for import.meta which isn't available in classic workers
+                if (typeof importMeta === 'undefined') {
+                    self.importMeta = { url: wasmUrl };
+                }
+                
                 importScripts(wasmUrl);
                 console.log('[Worker] WASM script imported');
                 
