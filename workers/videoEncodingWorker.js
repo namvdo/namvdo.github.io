@@ -25,31 +25,83 @@ async function initWasm(wasmUrl) {
         throw new Error('WASM URL not provided');
     }
 
-    // Validate the URL format
-    try {
-        new URL(wasmUrl);
-        mobileLog('WASM URL is valid:', wasmUrl);
-    } catch (e) {
-        mobileLog('WARNING: Invalid WASM URL format:', wasmUrl);
-    }
-
     try {
         mobileLog('Attempting to import module factory...');
         
-        // Test if the URL is accessible before importing
+        // Try multiple strategies to load the WASM module
+        let moduleFactory;
+        let successfulUrl = null;
+        
+        // Strategy 1: Try the provided URL first
         try {
-            const response = await fetch(wasmUrl, { method: 'HEAD' });
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            mobileLog('Trying provided URL:', wasmUrl);
+            moduleFactory = await import(wasmUrl);
+            successfulUrl = wasmUrl;
+            mobileLog('Module factory loaded successfully with provided URL');
+        } catch (primaryError) {
+            mobileLog('Primary URL failed, trying alternative paths...');
+            
+            // Strategy 2: Try alternative URLs for different build environments
+            const alternativeUrls = [
+                '/lux.js',                    // Production public directory
+                '/assets/lux.js',             // Assets directory
+                '/src/lux.js',                // Development source directory
+                './lux.js',                   // Relative to current location
+                window.location.origin + '/lux.js',  // Absolute URL
+                '/workers/lux.js',            // Workers directory
+                '/public/lux.js'              // Public directory
+            ];
+            
+            for (const altUrl of alternativeUrls) {
+                if (altUrl === wasmUrl) continue; // Skip the one we already tried
+                
+                try {
+                    mobileLog('Trying alternative URL:', altUrl);
+                    moduleFactory = await import(altUrl);
+                    successfulUrl = altUrl;
+                    mobileLog('Module factory loaded successfully with alternative URL:', altUrl);
+                    break;
+                } catch (altError) {
+                    mobileLog('Alternative URL failed:', altUrl, altError.message);
+                }
             }
-            mobileLog('WASM file is accessible');
-        } catch (fetchError) {
-            mobileLog('WARNING: Could not verify WASM file accessibility:', fetchError.message);
-            // Continue anyway - the import might still work
+            
+            // Strategy 3: If all imports failed, try fetch + blob approach
+            if (!moduleFactory) {
+                mobileLog('All import attempts failed, trying fetch + blob approach...');
+                
+                const fetchUrls = [
+                    wasmUrl,
+                    '/lux.js',
+                    '/assets/lux.js',
+                    '/src/lux.js'
+                ];
+                
+                for (const fetchUrl of fetchUrls) {
+                    try {
+                        mobileLog('Fetching from:', fetchUrl);
+                        const response = await fetch(fetchUrl);
+                        if (response.ok) {
+                            const wasmText = await response.text();
+                            const wasmBlob = new Blob([wasmText], { type: 'application/javascript' });
+                            const wasmBlobUrl = URL.createObjectURL(wasmBlob);
+                            
+                            moduleFactory = await import(wasmBlobUrl);
+                            URL.revokeObjectURL(wasmBlobUrl);
+                            successfulUrl = fetchUrl;
+                            mobileLog('Module factory loaded successfully with fetch + blob from:', fetchUrl);
+                            break;
+                        }
+                    } catch (fetchError) {
+                        mobileLog('Fetch attempt failed:', fetchUrl, fetchError.message);
+                    }
+                }
+            }
         }
         
-        const moduleFactory = await import(wasmUrl);
-        mobileLog('Module factory loaded successfully');
+        if (!moduleFactory) {
+            throw new Error('Could not load WASM module from any available path');
+        }
 
         // Configure module without threading and with imported memory
         const moduleConfig = {
@@ -57,27 +109,12 @@ async function initWasm(wasmUrl) {
             printErr: (text) => mobileLog('[WASM Error]', text),
             locateFile: (path) => {
                 mobileLog('Locating file:', path);
-                
-                // Handle different file types with proper path resolution
+                // Try to resolve relative to the successful URL
                 if (path.endsWith('.wasm')) {
-                    // For WASM files, construct path relative to the lux.js location
-                    const baseUrl = wasmUrl.replace('/lux.js', '');
-                    const fullPath = `${baseUrl}/${path}`;
-                    mobileLog('WASM file path:', fullPath);
-                    return fullPath;
-                } else if (path.endsWith('.js')) {
-                    // For JS files, use the same directory as lux.js
-                    const baseUrl = wasmUrl.replace('/lux.js', '');
-                    const fullPath = `${baseUrl}/${path}`;
-                    mobileLog('JS file path:', fullPath);
-                    return fullPath;
-                } else {
-                    // For other files, try the same directory
-                    const baseUrl = wasmUrl.replace('/lux.js', '');
-                    const fullPath = `${baseUrl}/${path}`;
-                    mobileLog('Other file path:', fullPath);
-                    return fullPath;
+                    const baseUrl = successfulUrl.substring(0, successfulUrl.lastIndexOf('/') + 1);
+                    return baseUrl + path;
                 }
+                return path;
             },
             // Use imported memory configuration
             importMemory: true
@@ -89,19 +126,7 @@ async function initWasm(wasmUrl) {
     } catch (error) {
         mobileLog('CRITICAL ERROR - Failed to initialize module:', error.message);
         mobileLog('Error stack:', error.stack);
-        
-        // Provide more specific error information for debugging
-        if (error.message.includes('Failed to fetch')) {
-            throw new Error(`WASM module not found at ${wasmUrl}. Check if the file exists and is accessible.`);
-        } else if (error.message.includes('import')) {
-            throw new Error(`Failed to import WASM module. This might be a CORS issue or the module is not properly compiled.`);
-        } else if (error.message.includes('404')) {
-            throw new Error(`WASM module not found (404). The file ${wasmUrl} does not exist on the server.`);
-        } else if (error.message.includes('CORS')) {
-            throw new Error(`CORS error loading WASM module. The server may not allow cross-origin requests for WASM files.`);
-        } else {
-            throw new Error(`Module initialization failed: ${error.message}`);
-        }
+        throw new Error(`Module initialization failed: ${error.message}`);
     }
 
     const exportedFunctions = Object.keys(CppModule).filter(key => typeof CppModule[key] === 'function');
