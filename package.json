@@ -1,7 +1,7 @@
 {
-  "name": "ncd_caculator",
+  "name": "namvdo-portfolio",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
   "type": "module",
   "jest": {
     "transform": {}
@@ -22,6 +22,7 @@
     "cors": "^2.8.5",
     "express": "^4.21.1",
     "iconv-lite": "^0.6.3",
+    "katex": "^0.16.33",
     "lucide-react": "^0.454.0",
     "pako": "^2.1.0",
     "pdf-lib": "^1.17.1",
@@ -32,6 +33,7 @@
     "react-dropzone": "^14.3.5",
     "react-force-graph": "^1.44.6",
     "react-force-graph-2d": "^1.25.7",
+    "react-katex": "^3.1.0",
     "react-treebeard": "^3.2.4",
     "text-encoding-utf-8": "^1.0.2",
     "three": "^0.169.0",
