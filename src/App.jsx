@@ -30,6 +30,7 @@ const ExternalLinkIcon = () => (
 function App() {
   const [activeSection, setActiveSection] = useState('about')
   const [showDocuments, setShowDocuments] = useState(false)
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
 
   useEffect(() => {
     const handleScroll = () => {
@@ -77,7 +78,9 @@ function App() {
         <div className="section-container">
           <div className="flex items-center justify-between h-16">
             <span className="font-sans font-semibold text-lg text-gray-900">Nam Do</span>
-            <div className="flex gap-8">
+
+            {/* Desktop Menu */}
+            <div className="hidden md:flex gap-8">
               {['About', 'Experience', 'Education', 'Research', 'Projects', 'Writing', 'Contact'].map((item) => (
                 <button
                   key={item}
@@ -91,25 +94,59 @@ function App() {
                 </button>
               ))}
             </div>
+
+            {/* Mobile Menu Button */}
+            <button
+              className="md:hidden p-2 -mr-2 text-gray-600 hover:text-gray-900 focus:outline-none"
+              onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                {isMobileMenuOpen ? (
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                ) : (
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                )}
+              </svg>
+            </button>
           </div>
+
+          {/* Mobile Menu Dropdown */}
+          {isMobileMenuOpen && (
+            <div className="md:hidden absolute top-full left-0 right-0 bg-[#fafafa]/95 backdrop-blur-sm border-b border-gray-200 px-4 py-4 space-y-3 z-50 shadow-lg">
+              {['About', 'Experience', 'Education', 'Research', 'Projects', 'Writing', 'Contact'].map((item) => (
+                <button
+                  key={item}
+                  onClick={() => {
+                    scrollToSection(item.toLowerCase());
+                    setIsMobileMenuOpen(false);
+                  }}
+                  className={`block w-full text-left px-4 py-3 font-sans text-base rounded-md transition-colors ${activeSection === item.toLowerCase()
+                    ? 'bg-gray-100 text-gray-900 font-semibold'
+                    : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                    }`}
+                >
+                  {item}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </nav>
 
       {/* Hero / About Section */}
       <section id="about" className="pt-24 pb-20">
         <div className="section-container">
-          <div className="flex flex-col md:flex-row gap-8 items-start">
+          <div className="flex flex-col md:flex-row gap-8 items-center md:items-start text-center md:text-left">
             {/* Avatar with document links */}
             <div className="relative avatar-dropdown flex-shrink-0">
               <button
                 onClick={() => setShowDocuments(!showDocuments)}
-                className="focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 rounded-full block"
+                className="focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 rounded-full block mx-auto md:mx-0"
               >
                 <img
                   src="/namdo.jpg"
                   alt="Nam Do"
-                  style={{ width: '200px', height: '200px', minWidth: '200px', minHeight: '200px' }}
-                  className="rounded-full object-cover border-4 border-white shadow-lg hover:shadow-xl transition-shadow cursor-pointer"
+                  className="w-40 h-40 md:w-[200px] md:h-[200px] rounded-full object-cover border-4 border-white shadow-lg hover:shadow-xl transition-shadow cursor-pointer"
                 />
               </button>
               {showDocuments && (
@@ -160,7 +197,7 @@ function App() {
                 maintain an active technical blog documenting implementations across computer
                 science fundamentals.
               </p>
-              <div className="flex gap-4">
+              <div className="flex gap-4 justify-center md:justify-start flex-wrap">
                 <a
                   href="https://github.com/namvdo"
                   target="_blank"
@@ -199,7 +236,7 @@ function App() {
 
           <div className="space-y-8">
             <div className="border-l-2 border-gray-200 pl-6">
-              <div className="flex items-start justify-between">
+              <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-1 sm:gap-0">
                 <div>
                   <h3 className="font-sans text-lg font-medium text-gray-900">
                     Graduate Research Assistant
@@ -210,14 +247,14 @@ function App() {
                     at the Center for Ubiquitous Computing (UBICOMP).
                   </p>
                 </div>
-                <span className="font-sans text-sm text-gray-500 whitespace-nowrap ml-4">
+                <span className="font-sans text-sm text-gray-500 whitespace-nowrap sm:ml-4">
                   Jan 2026 - Present
                 </span>
               </div>
             </div>
 
             <div className="border-l-2 border-gray-200 pl-6">
-              <div className="flex items-start justify-between">
+              <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-1 sm:gap-0">
                 <div>
                   <h3 className="font-sans text-lg font-medium text-gray-900">
                     Software Engineer
@@ -229,14 +266,14 @@ function App() {
                     with ThreeJS, and integrated multiple compression algorithms.
                   </p>
                 </div>
-                <span className="font-sans text-sm text-gray-500 whitespace-nowrap ml-4">
+                <span className="font-sans text-sm text-gray-500 whitespace-nowrap sm:ml-4">
                   Oct 2024 - Oct 2025
                 </span>
               </div>
             </div>
 
             <div className="border-l-2 border-gray-200 pl-6">
-              <div className="flex items-start justify-between">
+              <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-1 sm:gap-0">
                 <div>
                   <h3 className="font-sans text-lg font-medium text-gray-900">
                     Software Engineer
@@ -244,17 +281,16 @@ function App() {
                   <p className="text-gray-600 mt-1">CompaxDigital - Hanoi, Vietnam</p>
                   <p className="text-gray-500 text-sm mt-2">
                     Designed and built CI/CD pipelines, queue and data migration services.
-                    projects.
                   </p>
                 </div>
-                <span className="font-sans text-sm text-gray-500 whitespace-nowrap ml-4">
+                <span className="font-sans text-sm text-gray-500 whitespace-nowrap sm:ml-4">
                   Sep 2023 - Aug 2025
                 </span>
               </div>
             </div>
 
             <div className="border-l-2 border-gray-200 pl-6">
-              <div className="flex items-start justify-between">
+              <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-1 sm:gap-0">
                 <div>
                   <h3 className="font-sans text-lg font-medium text-gray-900">
                     Software Engineer
@@ -264,14 +300,14 @@ function App() {
                     Developed vertical search services for Coc Coc Search Engine. Built monitoring systems with anomaly detection.
                   </p>
                 </div>
-                <span className="font-sans text-sm text-gray-500 whitespace-nowrap ml-4">
+                <span className="font-sans text-sm text-gray-500 whitespace-nowrap sm:ml-4">
                   Sep 2021 - Jul 2023
                 </span>
               </div>
             </div>
 
             <div className="border-l-2 border-gray-200 pl-6">
-              <div className="flex items-start justify-between">
+              <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-1 sm:gap-0">
                 <div>
                   <h3 className="font-sans text-lg font-medium text-gray-900">
                     Software Engineer
@@ -282,7 +318,7 @@ function App() {
                     Implemented both business logic (Spring Boot) and media services (ion-sfu).
                   </p>
                 </div>
-                <span className="font-sans text-sm text-gray-500 whitespace-nowrap ml-4">
+                <span className="font-sans text-sm text-gray-500 whitespace-nowrap sm:ml-4">
                   Feb 2021 - Sep 2021
                 </span>
               </div>
@@ -298,7 +334,7 @@ function App() {
 
           <div className="space-y-8">
             <div className="border-l-2 border-gray-200 pl-6">
-              <div className="flex items-start justify-between">
+              <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-1 sm:gap-0">
                 <div>
                   <h3 className="font-sans text-lg font-medium text-gray-900">
                     University of Oulu, Finland
@@ -309,21 +345,21 @@ function App() {
                     Benchmarking localization algorithms with learning-based algorithms
                   </p>
                 </div>
-                <span className="font-sans text-sm text-gray-500 whitespace-nowrap ml-4">
+                <span className="font-sans text-sm text-gray-500 whitespace-nowrap sm:ml-4">
                   2025 - 2027
                 </span>
               </div>
             </div>
 
             <div className="border-l-2 border-gray-200 pl-6">
-              <div className="flex items-start justify-between">
+              <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-1 sm:gap-0">
                 <div>
                   <h3 className="font-sans text-lg font-medium text-gray-900">
                     FPT University, Vietnam
                   </h3>
                   <p className="text-gray-600 mt-1">Bachelor of Computer Software Engineering</p>
                 </div>
-                <span className="font-sans text-sm text-gray-500 whitespace-nowrap ml-4">
+                <span className="font-sans text-sm text-gray-500 whitespace-nowrap sm:ml-4">
                   2018 - 2023
                 </span>
               </div>
@@ -442,7 +478,7 @@ function App() {
                   </ul>
                 </div>
 
-                <div className="flex items-center gap-4">
+                <div className="flex flex-wrap items-center gap-4">
                   <a
                     href="/set-valued-viz/"
                     className="font-sans text-sm text-blue-600 hover:text-blue-800"
