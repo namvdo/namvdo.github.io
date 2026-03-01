@@ -243,12 +243,12 @@ function App() {
                   </h3>
                   <p className="text-gray-600 mt-1">CompaxDigital - Hanoi, Vietnam</p>
                   <p className="text-gray-500 text-sm mt-2">
-                    Designed and built CI/CD pipelines. Built core components for multi-client monorepo
+                    Designed and built CI/CD pipelines, queue and data migration services.
                     projects.
                   </p>
                 </div>
                 <span className="font-sans text-sm text-gray-500 whitespace-nowrap ml-4">
-                  Sep 2023 - Present
+                  Sep 2023 - Aug 2025
                 </span>
               </div>
             </div>
